@@ -62,78 +62,93 @@ function saveDB() {
   fs.writeFileSync(DB_PATH, buffer);
 }
 
-function getUser(telegramId) {
-  const stmt = db.prepare('SELECT * FROM users WHERE telegram_id = ?');
-  stmt.bind([telegramId]);
-  if (stmt.step()) {
+// Exported as objects with .run()/.get()/.all() to match index.js usage
+
+const getUser = {
+  get(telegramId) {
+    const stmt = db.prepare('SELECT * FROM users WHERE telegram_id = ?');
+    stmt.bind([telegramId]);
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      stmt.free();
+      return row;
+    }
+    stmt.free();
+    return null;
+  }
+};
+
+const createUser = {
+  run(telegramId, name) {
+    db.run(
+      `INSERT INTO users (telegram_id, name) VALUES (?, ?)
+       ON CONFLICT(telegram_id) DO UPDATE SET name = excluded.name`,
+      [telegramId, name]
+    );
+    saveDB();
+  }
+};
+
+// index.js calls: updateUserProfile.run(gender, age, weight, height, goal, calories, protein, fat, carbs, chatId)
+const updateUserProfile = {
+  run(gender, age, weight, height, goal, calorieNorm, proteinNorm, fatNorm, carbNorm, telegramId) {
+    db.run(
+      `UPDATE users SET gender=?, age=?, weight=?, height=?, goal=?,
+       calorie_norm=?, protein_norm=?, fat_norm=?, carb_norm=?
+       WHERE telegram_id=?`,
+      [gender, age, weight, height, goal, calorieNorm, proteinNorm, fatNorm, carbNorm, telegramId]
+    );
+    saveDB();
+  }
+};
+
+const addFoodLog = {
+  run(telegramId, foodName, weightG, calories, protein, fat, carbs) {
+    db.run(
+      `INSERT INTO food_log (telegram_id, food_name, weight_g, calories, protein, fat, carbs)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [telegramId, foodName, weightG, calories, protein, fat, carbs]
+    );
+    saveDB();
+  }
+};
+
+const getTodayLog = {
+  all(telegramId) {
+    const stmt = db.prepare(
+      `SELECT * FROM food_log WHERE telegram_id = ? AND date(logged_at) = date('now') ORDER BY logged_at ASC`
+    );
+    stmt.bind([telegramId]);
+    const rows = [];
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return rows;
+  }
+};
+
+const getTodayTotals = {
+  get(telegramId) {
+    const stmt = db.prepare(
+      `SELECT COUNT(*) as meals,
+       COALESCE(SUM(calories), 0) as total_calories,
+       COALESCE(SUM(protein), 0) as total_protein,
+       COALESCE(SUM(fat), 0) as total_fat,
+       COALESCE(SUM(carbs), 0) as total_carbs
+       FROM food_log WHERE telegram_id = ? AND date(logged_at) = date('now')`
+    );
+    stmt.bind([telegramId]);
+    stmt.step();
     const row = stmt.getAsObject();
     stmt.free();
     return row;
   }
-  stmt.free();
-  return null;
-}
-
-function createUser(telegramId, name) {
-  db.run(
-    `INSERT INTO users (telegram_id, name) VALUES (?, ?)
-     ON CONFLICT(telegram_id) DO UPDATE SET name = excluded.name`,
-    [telegramId, name]
-  );
-  saveDB();
-}
-
-function updateUserProfile(telegramId, gender, age, weight, height, goal, calorieNorm, proteinNorm, fatNorm, carbNorm) {
-  db.run(
-    `UPDATE users SET gender=?, age=?, weight=?, height=?, goal=?,
-     calorie_norm=?, protein_norm=?, fat_norm=?, carb_norm=?
-     WHERE telegram_id=?`,
-    [gender, age, weight, height, goal, calorieNorm, proteinNorm, fatNorm, carbNorm, telegramId]
-  );
-  saveDB();
-}
-
-function addFoodLog(telegramId, foodName, weightG, calories, protein, fat, carbs) {
-  db.run(
-    `INSERT INTO food_log (telegram_id, food_name, weight_g, calories, protein, fat, carbs)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [telegramId, foodName, weightG, calories, protein, fat, carbs]
-  );
-  saveDB();
-}
-
-function getTodayLog(telegramId) {
-  const stmt = db.prepare(
-    `SELECT * FROM food_log WHERE telegram_id = ? AND date(logged_at) = date('now') ORDER BY logged_at ASC`
-  );
-  stmt.bind([telegramId]);
-  const rows = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
-  }
-  stmt.free();
-  return rows;
-}
-
-function getTodayTotals(telegramId) {
-  const stmt = db.prepare(
-    `SELECT COUNT(*) as meals,
-     COALESCE(SUM(calories), 0) as total_calories,
-     COALESCE(SUM(protein), 0) as total_protein,
-     COALESCE(SUM(fat), 0) as total_fat,
-     COALESCE(SUM(carbs), 0) as total_carbs
-     FROM food_log WHERE telegram_id = ? AND date(logged_at) = date('now')`
-  );
-  stmt.bind([telegramId]);
-  stmt.step();
-  const row = stmt.getAsObject();
-  stmt.free();
-  return row;
-}
+};
 
 function checkAndUpdateUsage(telegramId) {
   const today = new Date().toISOString().split('T')[0];
-  const user = getUser(telegramId);
+  const user = getUser.get(telegramId);
   if (!user) return { allowed: false, remaining: 0 };
 
   if (user.last_use_date !== today) {
@@ -152,7 +167,7 @@ function checkAndUpdateUsage(telegramId) {
 
 function incrementUsage(telegramId) {
   const today = new Date().toISOString().split('T')[0];
-  const user = getUser(telegramId);
+  const user = getUser.get(telegramId);
   db.run('UPDATE users SET daily_uses = ?, last_use_date = ? WHERE telegram_id = ?',
     [(user?.daily_uses || 0) + 1, today, telegramId]);
   saveDB();
