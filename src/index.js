@@ -7,6 +7,7 @@ const {
   addFoodLog, getTodayLog, getTodayTotals,
   checkAndUpdateUsage, incrementUsage
 } = require('./database');
+const t = require('./translations');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = process.env.PORT || 3000;
@@ -53,38 +54,24 @@ async function downloadFile(fileId) {
 
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
-  const name = msg.from.first_name || 'друг';
+  const name = msg.from.first_name || 'friend';
 
   createUser.run(chatId, name);
   const user = getUser.get(chatId);
 
   if (user && user.calorie_norm) {
-    await bot.sendMessage(chatId,
-      `С возвращением, ${name}! 👋\n\n` +
-      `📸 Отправь фото еды — я посчитаю калории и БЖУ\n` +
-      `📊 /today — что съел сегодня\n` +
-      `💡 /tip — рекомендация по питанию\n` +
-      `⚙️ /profile — изменить параметры\n` +
-      `❓ /help — все команды`
-    );
+    await bot.sendMessage(chatId, t.welcome_back(name));
   } else {
-    await bot.sendMessage(chatId,
-      `Привет, ${name}! 👋\n\n` +
-      `Я — NutriBot 🥗\n` +
-      `Отправь мне фото еды, и я мгновенно посчитаю калории и БЖУ.\n\n` +
-      `Давай настроим твой профиль, чтобы я мог давать персональные рекомендации.\n\n` +
-      `Какой у тебя пол?`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '👨 Мужской', callback_data: 'gender_male' },
-              { text: '👩 Женский', callback_data: 'gender_female' }
-            ]
+    await bot.sendMessage(chatId, t.welcome_new(name), {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: t.btn_male, callback_data: 'gender_male' },
+            { text: t.btn_female, callback_data: 'gender_female' }
           ]
-        }
+        ]
       }
-    );
+    });
   }
 });
 
@@ -93,33 +80,37 @@ bot.onText(/\/today/, async (msg) => {
   const user = getUser.get(chatId);
 
   if (!user) {
-    return bot.sendMessage(chatId, 'Нажми /start чтобы начать!');
+    return bot.sendMessage(chatId, t.no_user);
   }
 
   const totals = getTodayTotals.get(chatId);
   const log = getTodayLog.all(chatId);
 
   if (totals.meals === 0) {
-    return bot.sendMessage(chatId, '📋 Сегодня ты ещё ничего не ел.\n\n📸 Отправь фото еды!');
+    return bot.sendMessage(chatId, t.no_meals_today);
   }
 
-  let text = `📊 *Сегодня съедено:*\n\n`;
+  let text = t.today_header;
 
   log.forEach((item, i) => {
     const time = item.logged_at.split(' ')[1]?.substring(0, 5) || '';
-    text += `${i + 1}. ${item.food_name} — ${formatNumber(item.calories)} ккал _(${time})_\n`;
+    text += `${i + 1}. ${item.food_name} — ${formatNumber(item.calories)} kcal _(${time})_\n`;
   });
 
-  text += `\n─────────────────\n`;
-  text += `*Итого:* ${formatNumber(totals.total_calories)} ккал\n`;
-  text += `Б: ${formatNumber(totals.total_protein)}г | Ж: ${formatNumber(totals.total_fat)}г | У: ${formatNumber(totals.total_carbs)}г\n`;
+  text += t.today_separator;
+  text += t.today_total(
+    formatNumber(totals.total_calories),
+    formatNumber(totals.total_protein),
+    formatNumber(totals.total_fat),
+    formatNumber(totals.total_carbs)
+  );
 
   if (user.calorie_norm) {
-    text += `\n📈 *Прогресс к дневной норме:*\n`;
-    text += `Калории: ${progressBar(totals.total_calories, user.calorie_norm)}\n`;
-    text += `Белок:   ${progressBar(totals.total_protein, user.protein_norm)}\n`;
-    text += `Жиры:    ${progressBar(totals.total_fat, user.fat_norm)}\n`;
-    text += `Углеводы:${progressBar(totals.total_carbs, user.carb_norm)}\n`;
+    text += t.today_progress_header;
+    text += t.today_calories(progressBar(totals.total_calories, user.calorie_norm));
+    text += t.today_protein(progressBar(totals.total_protein, user.protein_norm));
+    text += t.today_fat(progressBar(totals.total_fat, user.fat_norm));
+    text += t.today_carbs(progressBar(totals.total_carbs, user.carb_norm));
   }
 
   await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
@@ -130,7 +121,7 @@ bot.onText(/\/tip/, async (msg) => {
   const user = getUser.get(chatId);
 
   if (!user || !user.calorie_norm) {
-    return bot.sendMessage(chatId, '⚙️ Сначала настрой профиль: /profile');
+    return bot.sendMessage(chatId, t.tip_no_profile);
   }
 
   const totals = getTodayTotals.get(chatId);
@@ -141,26 +132,26 @@ bot.onText(/\/tip/, async (msg) => {
     carbs: user.carb_norm
   };
 
-  await bot.sendMessage(chatId, '🤔 Думаю над рекомендацией...');
+  await bot.sendMessage(chatId, t.tip_thinking);
 
   const tip = await getDietRecommendation(user, totals, norms);
   if (tip) {
-    await bot.sendMessage(chatId, `💡 *Рекомендация:*\n\n${tip}`, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, t.tip_result(tip), { parse_mode: 'Markdown' });
   } else {
-    await bot.sendMessage(chatId, 'Не удалось получить рекомендацию. Попробуй позже.');
+    await bot.sendMessage(chatId, t.tip_error);
   }
 });
 
 bot.onText(/\/profile/, async (msg) => {
   const chatId = msg.chat.id;
-  createUser.run(chatId, msg.from.first_name || 'друг');
+  createUser.run(chatId, msg.from.first_name || 'friend');
 
-  await bot.sendMessage(chatId, 'Давай обновим профиль. Какой у тебя пол?', {
+  await bot.sendMessage(chatId, t.profile_ask_gender, {
     reply_markup: {
       inline_keyboard: [
         [
-          { text: '👨 Мужской', callback_data: 'gender_male' },
-          { text: '👩 Женский', callback_data: 'gender_female' }
+          { text: t.btn_male, callback_data: 'gender_male' },
+          { text: t.btn_female, callback_data: 'gender_female' }
         ]
       ]
     }
@@ -168,17 +159,7 @@ bot.onText(/\/profile/, async (msg) => {
 });
 
 bot.onText(/\/help/, async (msg) => {
-  await bot.sendMessage(msg.chat.id,
-    `🥗 *NutriBot — Команды:*\n\n` +
-    `📸 *Отправь фото* — анализ КБЖУ\n` +
-    `📊 /today — дневник за сегодня\n` +
-    `💡 /tip — рекомендация что съесть\n` +
-    `⚙️ /profile — настроить профиль\n` +
-    `❓ /help — эта подсказка\n\n` +
-    `🆓 Бесплатно: 3 анализа в день\n` +
-    `⭐ Премиум: безлимит`,
-    { parse_mode: 'Markdown' }
-  );
+  await bot.sendMessage(msg.chat.id, t.help, { parse_mode: 'Markdown' });
 });
 
 // ============ ONBOARDING CALLBACKS ============
@@ -193,7 +174,7 @@ bot.on('callback_query', async (query) => {
   if (data.startsWith('gender_')) {
     const gender = data === 'gender_male' ? 'male' : 'female';
     onboardingState[chatId] = { gender, step: 'age' };
-    await bot.sendMessage(chatId, '📅 Сколько тебе лет? (напиши число)');
+    await bot.sendMessage(chatId, t.ask_age);
   }
 
   // Goal selection
@@ -210,18 +191,9 @@ bot.on('callback_query', async (query) => {
         chatId
       );
 
-      const goalText = goal === 'lose' ? '🔥 Похудение' : goal === 'gain' ? '💪 Набор массы' : '⚖️ Поддержание';
+      const goalText = goal === 'lose' ? t.goal_lose : goal === 'gain' ? t.goal_gain : t.goal_maintain;
 
-      await bot.sendMessage(chatId,
-        `✅ Профиль настроен!\n\n` +
-        `🎯 Цель: ${goalText}\n` +
-        `📊 Твоя дневная норма:\n` +
-        `├ Калории: ${norms.calories} ккал\n` +
-        `├ Белок: ${norms.protein}г\n` +
-        `├ Жиры: ${norms.fat}г\n` +
-        `└ Углеводы: ${norms.carbs}г\n\n` +
-        `📸 Теперь отправь фото еды — я посчитаю КБЖУ!`
-      );
+      await bot.sendMessage(chatId, t.profile_done(goalText, norms));
 
       delete onboardingState[chatId];
     }
@@ -256,32 +228,32 @@ bot.on('message', async (msg) => {
 
   if (state.step === 'age') {
     if (isNaN(num) || num < 10 || num > 100) {
-      return bot.sendMessage(chatId, '❌ Введи возраст числом (10-100)');
+      return bot.sendMessage(chatId, t.err_age);
     }
     state.age = num;
     state.step = 'weight';
-    await bot.sendMessage(chatId, '⚖️ Какой у тебя вес в кг? (например: 75)');
+    await bot.sendMessage(chatId, t.ask_weight);
   }
   else if (state.step === 'weight') {
     if (isNaN(num) || num < 30 || num > 300) {
-      return bot.sendMessage(chatId, '❌ Введи вес числом в кг (30-300)');
+      return bot.sendMessage(chatId, t.err_weight);
     }
     state.weight = num;
     state.step = 'height';
-    await bot.sendMessage(chatId, '📏 Какой у тебя рост в см? (например: 175)');
+    await bot.sendMessage(chatId, t.ask_height);
   }
   else if (state.step === 'height') {
     if (isNaN(num) || num < 100 || num > 250) {
-      return bot.sendMessage(chatId, '❌ Введи рост числом в см (100-250)');
+      return bot.sendMessage(chatId, t.err_height);
     }
     state.height = num;
     state.step = 'goal';
-    await bot.sendMessage(chatId, '🎯 Какая у тебя цель?', {
+    await bot.sendMessage(chatId, t.ask_goal, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '🔥 Похудение', callback_data: 'goal_lose' }],
-          [{ text: '💪 Набор массы', callback_data: 'goal_gain' }],
-          [{ text: '⚖️ Поддержание', callback_data: 'goal_maintain' }]
+          [{ text: t.btn_goal_lose, callback_data: 'goal_lose' }],
+          [{ text: t.btn_goal_gain, callback_data: 'goal_gain' }],
+          [{ text: t.btn_goal_maintain, callback_data: 'goal_maintain' }]
         ]
       }
     });
@@ -294,20 +266,16 @@ bot.on('photo', async (msg) => {
   const chatId = msg.chat.id;
 
   // Ensure user exists
-  createUser.run(chatId, msg.from.first_name || 'друг');
+  createUser.run(chatId, msg.from.first_name || 'friend');
 
   // Check usage limits
   const usage = checkAndUpdateUsage(chatId);
   if (!usage.allowed) {
-    return bot.sendMessage(chatId,
-      `⚠️ Ты использовал все 3 бесплатных анализа на сегодня.\n\n` +
-      `⭐ Хочешь безлимит? Оформи премиум-подписку!\n` +
-      `Завтра бесплатные анализы обновятся.`
-    );
+    return bot.sendMessage(chatId, t.limit_reached);
   }
 
   // Send "analyzing" message
-  const waitMsg = await bot.sendMessage(chatId, '🔍 Анализирую фото...');
+  const waitMsg = await bot.sendMessage(chatId, t.analyzing);
 
   try {
     // Download photo (largest size)
@@ -320,7 +288,7 @@ bot.on('photo', async (msg) => {
 
     if (!result.success) {
       await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
-      return bot.sendMessage(chatId, '❌ Не удалось проанализировать фото. Попробуй другое.');
+      return bot.sendMessage(chatId, t.analysis_failed);
     }
 
     const { data } = result;
@@ -334,19 +302,26 @@ bot.on('photo', async (msg) => {
     incrementUsage(chatId);
 
     // Format response
-    let text = `✅ *Анализ готов!*\n\n`;
+    let text = t.analysis_header;
 
     data.items.forEach((item) => {
-      text += `🍽 *${item.name}* (~${formatNumber(item.weight_g)}г)\n`;
-      text += `├ Калории: ${formatNumber(item.calories)} ккал\n`;
-      text += `├ Белок: ${formatNumber(item.protein)}г\n`;
-      text += `├ Жиры: ${formatNumber(item.fat)}г\n`;
-      text += `└ Углеводы: ${formatNumber(item.carbs)}г\n\n`;
+      text += t.analysis_item(
+        item.name,
+        formatNumber(item.weight_g),
+        formatNumber(item.calories),
+        formatNumber(item.protein),
+        formatNumber(item.fat),
+        formatNumber(item.carbs)
+      );
     });
 
     if (data.items.length > 1) {
-      text += `📊 *Итого:* ${formatNumber(data.total.calories)} ккал `;
-      text += `(Б:${formatNumber(data.total.protein)} Ж:${formatNumber(data.total.fat)} У:${formatNumber(data.total.carbs)})\n\n`;
+      text += t.analysis_total(
+        formatNumber(data.total.calories),
+        formatNumber(data.total.protein),
+        formatNumber(data.total.fat),
+        formatNumber(data.total.carbs)
+      );
     }
 
     if (data.comment) {
@@ -357,14 +332,16 @@ bot.on('photo', async (msg) => {
     const user = getUser.get(chatId);
     if (user && user.calorie_norm) {
       const totals = getTodayTotals.get(chatId);
-      text += `─────────────────\n`;
-      text += `📈 *За сегодня:* ${formatNumber(totals.total_calories)}/${formatNumber(user.calorie_norm)} ккал\n`;
-      text += `${progressBar(totals.total_calories, user.calorie_norm)}\n`;
+      text += t.analysis_daily(
+        formatNumber(totals.total_calories),
+        formatNumber(user.calorie_norm),
+        progressBar(totals.total_calories, user.calorie_norm)
+      );
     }
 
     const remaining = usage.remaining - 1;
     if (remaining > 0 && !user?.is_premium) {
-      text += `\n📸 Осталось анализов: ${remaining}/3`;
+      text += t.analyses_remaining(remaining);
     }
 
     await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
@@ -373,7 +350,7 @@ bot.on('photo', async (msg) => {
   } catch (error) {
     console.error('Photo analysis error:', error);
     await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
-    await bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуй ещё раз.');
+    await bot.sendMessage(chatId, t.analysis_error);
   }
 });
 
