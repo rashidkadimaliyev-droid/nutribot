@@ -232,4 +232,38 @@ async function getDietRecommendation(userProfile, todayTotals, norms) {
   }
 }
 
-module.exports = { analyzeFood, calculateNorms, getDietRecommendation };
+async function chatWithUser(userText, userProfile, todayTotals) {
+  const goalMap = { lose: 'похудение', gain: 'набор массы', maintain: 'поддержание веса' };
+  const genderMap = { male: 'мужчина', female: 'женщина' };
+
+  let context = '';
+  if (userProfile && userProfile.calorie_norm) {
+    context = `Профиль пользователя: ${genderMap[userProfile.gender] || 'не указан'}, ${userProfile.age || '?'} лет, ${userProfile.weight || '?'} кг, рост ${userProfile.height || '?'} см, цель: ${goalMap[userProfile.goal] || 'не указана'}.
+Дневная норма: ${userProfile.calorie_norm} ккал (Б:${userProfile.protein_norm}г Ж:${userProfile.fat_norm}г У:${userProfile.carb_norm}г).`;
+    if (todayTotals && todayTotals.meals > 0) {
+      context += `\nСегодня съедено: ${Math.round(todayTotals.total_calories)} ккал (Б:${Math.round(todayTotals.total_protein)}г Ж:${Math.round(todayTotals.total_fat)}г У:${Math.round(todayTotals.total_carbs)}г).`;
+    } else {
+      context += '\nСегодня ещё ничего не съедено.';
+    }
+  }
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 600,
+      system: `Ты — дружелюбный AI-нутрициолог в Telegram-боте NutriBot. Отвечай коротко (2-4 предложения), по-русски, без markdown-заголовков. Используй контекст профиля пользователя если он есть. Если вопрос не про питание — мягко переведи тему на еду и здоровье.`,
+      messages: [
+        {
+          role: 'user',
+          content: context ? `${context}\n\nВопрос пользователя: ${userText}` : userText
+        }
+      ]
+    });
+    return response.content[0].text;
+  } catch (error) {
+    console.error('Chat error:', error.message);
+    return null;
+  }
+}
+
+module.exports = { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser };

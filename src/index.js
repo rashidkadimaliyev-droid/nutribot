@@ -1,7 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const https = require('https');
 const http = require('http');
-const { analyzeFood, calculateNorms, getDietRecommendation } = require('./claude');
+const { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser } = require('./claude');
 const {
   initDB, getUser, createUser, updateUserProfile,
   addFoodLog, getTodayLog, getTodayTotals,
@@ -234,7 +234,22 @@ bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const state = onboardingState[chatId];
 
-  if (!state || msg.photo || msg.text?.startsWith('/')) return;
+  if (msg.photo || msg.text?.startsWith('/')) return;
+
+  // Free-form chat for users not in onboarding
+  if (!state) {
+    const text = msg.text?.trim();
+    if (!text) return;
+
+    const user = getUser.get(chatId);
+    const totals = user ? getTodayTotals.get(chatId) : null;
+
+    const reply = await chatWithUser(text, user, totals);
+    if (reply) {
+      await bot.sendMessage(chatId, reply);
+    }
+    return;
+  }
 
   const text = msg.text?.trim();
   const num = parseFloat(text);
