@@ -79,6 +79,13 @@ async function initDB() {
     // Column already exists
   }
 
+  // Migrate: add activity column
+  try {
+    db.run(`ALTER TABLE users ADD COLUMN activity TEXT DEFAULT 'moderate'`);
+  } catch (e) {
+    // Column already exists
+  }
+
   saveDB();
   console.log('Database initialized');
 }
@@ -116,14 +123,14 @@ const createUser = {
   }
 };
 
-// index.js calls: updateUserProfile.run(gender, age, weight, height, goal, calories, protein, fat, carbs, chatId)
+// index.js calls: updateUserProfile.run(gender, age, weight, height, goal, activity, calories, protein, fat, carbs, chatId)
 const updateUserProfile = {
-  run(gender, age, weight, height, goal, calorieNorm, proteinNorm, fatNorm, carbNorm, telegramId) {
+  run(gender, age, weight, height, goal, activity, calorieNorm, proteinNorm, fatNorm, carbNorm, telegramId) {
     db.run(
-      `UPDATE users SET gender=?, age=?, weight=?, height=?, goal=?,
+      `UPDATE users SET gender=?, age=?, weight=?, height=?, goal=?, activity=?,
        calorie_norm=?, protein_norm=?, fat_norm=?, carb_norm=?
        WHERE telegram_id=?`,
-      [gender, age, weight, height, goal, calorieNorm, proteinNorm, fatNorm, carbNorm, telegramId]
+      [gender, age, weight, height, goal, activity, calorieNorm, proteinNorm, fatNorm, carbNorm, telegramId]
     );
     saveDB();
   }
@@ -213,6 +220,36 @@ function getMonthSummary(telegramId) {
   return rows;
 }
 
+function getLastWeekSummary(telegramId) {
+  const stmt = db.prepare(`
+    SELECT date(logged_at) as date,
+           COUNT(*) as meals,
+           COALESCE(SUM(calories), 0) as total_calories,
+           COALESCE(SUM(protein), 0) as total_protein,
+           COALESCE(SUM(fat), 0) as total_fat,
+           COALESCE(SUM(carbs), 0) as total_carbs
+    FROM food_log
+    WHERE telegram_id = ?
+      AND date(logged_at) >= date('now', '-13 days')
+      AND date(logged_at) < date('now', '-6 days')
+    GROUP BY date(logged_at)
+    ORDER BY date(logged_at) ASC
+  `);
+  stmt.bind([telegramId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getPlanUsers() {
+  const stmt = db.prepare(`SELECT * FROM users WHERE plan IN ('premium', 'pro')`);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
 function checkAndUpdateUsage(telegramId) {
   const today = new Date().toISOString().split('T')[0];
   const user = getUser.get(telegramId);
@@ -224,7 +261,7 @@ function checkAndUpdateUsage(telegramId) {
     return { allowed: true, remaining: 3 };
   }
 
-  if (user.plan === 'premium') return { allowed: true, remaining: 999 };
+  if (user.plan === 'premium' || user.plan === 'pro') return { allowed: true, remaining: 999 };
 
   const FREE_LIMIT = 3;
   if (user.daily_uses >= FREE_LIMIT) return { allowed: false, remaining: 0 };
@@ -239,7 +276,7 @@ function checkChatUsage(telegramId) {
   const user = getUser.get(telegramId);
   if (!user) return { allowed: false, remaining: 0 };
 
-  if (user.plan === 'premium') return { allowed: true, remaining: 999 };
+  if (user.plan === 'premium' || user.plan === 'pro') return { allowed: true, remaining: 999 };
 
   // Reset counter if it's a new day
   if (user.last_use_date !== today) {
@@ -295,7 +332,9 @@ module.exports = {
   getTodayLog,
   getTodayTotals,
   getWeekSummary,
+  getLastWeekSummary,
   getMonthSummary,
+  getPlanUsers,
   checkAndUpdateUsage,
   incrementUsage,
   upgradeUser,

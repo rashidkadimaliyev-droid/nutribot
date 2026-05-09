@@ -1,11 +1,11 @@
 const TelegramBot = require('node-telegram-bot-api');
 const https = require('https');
 const http = require('http');
-const { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe } = require('./claude');
+const { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe, generateWeeklyReport } = require('./claude');
 const {
   initDB, getUser, createUser, updateUserProfile,
   addFoodLog, getTodayLog, getTodayTotals,
-  getWeekSummary, getMonthSummary,
+  getWeekSummary, getLastWeekSummary, getMonthSummary, getPlanUsers,
   checkAndUpdateUsage, incrementUsage, upgradeUser, savePayment,
   checkChatUsage, incrementChatUsage
 } = require('./database');
@@ -353,24 +353,43 @@ bot.on('callback_query', async (query) => {
     return;
   }
 
-  // Goal selection
+  // Goal selection — save goal, then ask activity
   if (data.startsWith('goal_')) {
     const goal = data.replace('goal_', '');
     const state = onboardingState[chatId];
-
     if (state) {
-      const norms = calculateNorms(state.gender, state.age, state.weight, state.height, goal);
+      state.goal = goal;
+      state.step = 'activity';
+      await bot.sendMessage(chatId, t.ask_activity, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: t.btn_activity_sedentary, callback_data: 'activity_sedentary' }],
+            [{ text: t.btn_activity_light,     callback_data: 'activity_light' }],
+            [{ text: t.btn_activity_moderate,  callback_data: 'activity_moderate' }],
+            [{ text: t.btn_activity_active,    callback_data: 'activity_active' }]
+          ]
+        }
+      });
+    }
+  }
+
+  // Activity selection — finalise profile
+  if (data.startsWith('activity_')) {
+    const activity = data.replace('activity_', '');
+    const state = onboardingState[chatId];
+    if (state) {
+      const norms = calculateNorms(state.gender, state.age, state.weight, state.height, state.goal, activity);
 
       updateUserProfile.run(
-        state.gender, state.age, state.weight, state.height, goal,
+        state.gender, state.age, state.weight, state.height, state.goal, activity,
         norms.calories, norms.protein, norms.fat, norms.carbs,
         chatId
       );
 
-      const goalText = goal === 'lose' ? t.goal_lose : goal === 'gain' ? t.goal_gain : t.goal_maintain;
+      const goalText = { lose: t.goal_lose, gain: t.goal_gain, recomp: t.goal_recomp, maintain: t.goal_maintain }[state.goal] || t.goal_maintain;
+      const activityText = { sedentary: t.btn_activity_sedentary, light: t.btn_activity_light, moderate: t.btn_activity_moderate, active: t.btn_activity_active }[activity];
 
-      await bot.sendMessage(chatId, t.profile_done(goalText, norms));
-
+      await bot.sendMessage(chatId, t.profile_done(goalText, activityText, norms));
       delete onboardingState[chatId];
     }
   }
@@ -438,8 +457,9 @@ bot.on('message', async (msg) => {
     await bot.sendMessage(chatId, t.ask_goal, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: t.btn_goal_lose, callback_data: 'goal_lose' }],
-          [{ text: t.btn_goal_gain, callback_data: 'goal_gain' }],
+          [{ text: t.btn_goal_lose,     callback_data: 'goal_lose' }],
+          [{ text: t.btn_goal_gain,     callback_data: 'goal_gain' }],
+          [{ text: t.btn_goal_recomp,   callback_data: 'goal_recomp' }],
           [{ text: t.btn_goal_maintain, callback_data: 'goal_maintain' }]
         ]
       }
@@ -470,8 +490,8 @@ bot.on('photo', async (msg) => {
     const imageBuffer = await downloadFile(photoSize.file_id);
     const imageBase64 = imageBuffer.toString('base64');
 
-    // Analyze with Claude Vision
-    const result = await analyzeFood(imageBase64);
+    // Analyze with Claude Vision (pass caption if user added one)
+    const result = await analyzeFood(imageBase64, 'image/jpeg', msg.caption || null);
 
     if (!result.success) {
       await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
@@ -565,6 +585,38 @@ bot.on('message', async (msg) => {
 
   await bot.sendMessage(chatId, t.upgrade_success, { parse_mode: 'Markdown' });
 });
+
+// ============ WEEKLY REPORT SCHEDULER ============
+
+let lastWeeklyReportDate = null;
+
+async function sendWeeklyReports() {
+  const users = getPlanUsers();
+  for (const user of users) {
+    try {
+      const thisWeek = getWeekSummary(user.telegram_id);
+      if (thisWeek.length === 0) continue;
+      const lastWeek = getLastWeekSummary(user.telegram_id);
+      const report = await generateWeeklyReport(user, thisWeek, lastWeek);
+      if (report) {
+        await bot.sendMessage(user.telegram_id, t.weekly_report_header + report, { parse_mode: 'Markdown' });
+      }
+    } catch (e) {
+      console.error(`Weekly report failed for ${user.telegram_id}:`, e.message);
+    }
+  }
+}
+
+setInterval(() => {
+  const now = new Date();
+  const isSunday = now.getUTCDay() === 0;
+  const isReportHour = now.getUTCHours() === 18;
+  const today = now.toISOString().split('T')[0];
+  if (isSunday && isReportHour && lastWeeklyReportDate !== today) {
+    lastWeeklyReportDate = today;
+    sendWeeklyReports().catch(e => console.error('Weekly reports error:', e));
+  }
+}, 60 * 1000); // check every minute
 
 // ============ HEALTH CHECK SERVER ============
 

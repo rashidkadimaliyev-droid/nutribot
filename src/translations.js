@@ -61,7 +61,14 @@ const t = {
   btn_female: `👩 Female`,
   btn_goal_lose: `🔥 Lose weight`,
   btn_goal_gain: `💪 Gain muscle`,
+  btn_goal_recomp: `🔄 Recomposition`,
   btn_goal_maintain: `⚖️ Maintain weight`,
+
+  ask_activity: `🏃 What's your activity level?`,
+  btn_activity_sedentary: `🪑 Sedentary (desk job)`,
+  btn_activity_light: `🚶 Lightly active (1-3x/week)`,
+  btn_activity_moderate: `🏋️ Moderately active (3-5x/week)`,
+  btn_activity_active: `⚡ Very active (6-7x/week)`,
 
   // onboarding steps
   ask_age: `📅 How old are you? (enter a number)`,
@@ -75,9 +82,10 @@ const t = {
   err_height: `❌ Please enter your height in cm (100–250)`,
 
   // onboarding complete
-  profile_done: (goalText, norms) =>
+  profile_done: (goalText, activityText, norms) =>
     `✅ Profile set up!\n\n` +
     `🎯 Goal: ${goalText}\n` +
+    `🏃 Activity: ${activityText}\n` +
     `📊 Your daily targets:\n` +
     `├ Calories: ${norms.calories} kcal\n` +
     `├ Protein: ${norms.protein}g\n` +
@@ -87,7 +95,11 @@ const t = {
 
   goal_lose: `🔥 Lose weight`,
   goal_gain: `💪 Gain muscle`,
+  goal_recomp: `🔄 Recomposition`,
   goal_maintain: `⚖️ Maintain weight`,
+
+  weekly_report_header: `📊 *Your Weekly Report*\n\n`,
+  weekly_report_error: null,
 
   // photo analysis
   limit_reached:

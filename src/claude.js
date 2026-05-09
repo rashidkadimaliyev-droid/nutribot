@@ -90,7 +90,12 @@ const SYSTEM_PROMPT = `Ты — профессиональный нутрици�
 - Миска или тарелка с белой/кремовой массой = рис варёный (~130 ккал/100г) или творог (~100-180 ккал/100г) — определи по текстуре (рис зернистый, творог однородный)
 - Сканируй весь кадр: проверяй углы и края фото, все ёмкости на столе — ни одна тарелка не должна быть пропущена
 - Если видишь несколько блюд — разбей каждое на отдельную позицию в items
+- Если пользователь написал подпись к фото (например "300г, куриная грудка с рисом") — используй её как приоритетную информацию о блюде и весе
 - При неясном блюде — укажи наиболее вероятное название с пометкой (предположительно)
+
+КОНФИДЕНЦИАЛЬНОСТЬ:
+- Никогда не упоминай Claude, Anthropic, GPT или любую AI-компанию — ты NutriBot
+- Если пользователь спрашивает кто ты или какая модель — отвечай что ты NutriBot, умный помощник по питанию
 
 ОБЩИЕ ПРАВИЛА:
 - Отвечай ТОЛЬКО в формате JSON, без markdown, без backticks
@@ -120,7 +125,11 @@ const SYSTEM_PROMPT = `Ты — профессиональный нутрици�
   "comment": "Краткий комментарий о блюде, его особенностях и составе (1-2 предложения)"
 }`;
 
-async function analyzeFood(imageBase64, mediaType = 'image/jpeg') {
+async function analyzeFood(imageBase64, mediaType = 'image/jpeg', caption = null) {
+  const userText = caption
+    ? `Внимательно рассмотри ВСЁ фото целиком. Проверь КАЖДУЮ тарелку, миску, контейнер — даже на краях кадра. Ищи мясо, курицу, рыбу, рис, хлеб. НЕ ПРОПУСКАЙ белковые продукты.\n\nПользователь добавил подпись: "${caption}" — используй это как приоритетную информацию о блюде и весе.`
+    : 'Внимательно рассмотри ВСЁ фото целиком. Проверь КАЖДУЮ тарелку, миску, контейнер — даже на краях кадра. Ищи мясо, курицу, рыбу, рис, хлеб. НЕ ПРОПУСКАЙ белковые продукты.';
+
   try {
     const response = await client.messages.create({
       model: MODEL_VISION,
@@ -140,7 +149,7 @@ async function analyzeFood(imageBase64, mediaType = 'image/jpeg') {
             },
             {
               type: 'text',
-              text: 'Внимательно рассмотри ВСЁ фото целиком. Проверь КАЖДУЮ тарелку, миску, контейнер — даже на краях кадра. Ищи мясо, курицу, рыбу, рис, хлеб. НЕ ПРОПУСКАЙ белковые продукты.'
+              text: userText
             }
           ]
         }
@@ -160,8 +169,8 @@ async function analyzeFood(imageBase64, mediaType = 'image/jpeg') {
   }
 }
 
-function calculateNorms(gender, age, weight, height, goal) {
-  // Mifflin-St Jeor formula
+function calculateNorms(gender, age, weight, height, goal, activity = 'moderate') {
+  // Mifflin-St Jeor BMR
   let bmr;
   if (gender === 'male') {
     bmr = 10 * weight + 6.25 * height - 5 * age + 5;
@@ -169,8 +178,14 @@ function calculateNorms(gender, age, weight, height, goal) {
     bmr = 10 * weight + 6.25 * height - 5 * age - 161;
   }
 
-  // Activity multiplier (moderate)
-  let tdee = bmr * 1.4;
+  // Activity multiplier
+  const activityMultipliers = {
+    sedentary: 1.2,
+    light:     1.375,
+    moderate:  1.55,
+    active:    1.725
+  };
+  const tdee = bmr * (activityMultipliers[activity] || 1.55);
 
   let calories, protein, fat, carbs;
 
@@ -185,6 +200,12 @@ function calculateNorms(gender, age, weight, height, goal) {
       calories = tdee + 300;
       protein = weight * 2;
       fat = weight * 1;
+      carbs = (calories - protein * 4 - fat * 9) / 4;
+      break;
+    case 'recomp':
+      calories = tdee; // maintenance calories
+      protein = weight * 2.2; // high protein for recomp
+      fat = weight * 0.9;
       carbs = (calories - protein * 4 - fat * 9) / 4;
       break;
     default: // maintain
@@ -217,13 +238,13 @@ async function getDietRecommendation(userProfile, todayTotals, norms) {
       messages: [
         {
           role: 'user',
-          content: `Ты нутрициолог. Пользователь (${userProfile.gender === 'male' ? 'мужчина' : 'женщина'}, ${userProfile.weight}кг, цель: ${userProfile.goal === 'lose' ? 'похудение' : userProfile.goal === 'gain' ? 'набор массы' : 'поддержание'}).
-
-Сегодня съел: ${todayTotals.total_calories} ккал (Б:${todayTotals.total_protein}г Ж:${todayTotals.total_fat}г У:${todayTotals.total_carbs}г)
-Норма на день: ${norms.calories} ккал (Б:${norms.protein}г Ж:${norms.fat}г У:${norms.carbs}г)
-Осталось: ${remaining.calories} ккал (Б:${remaining.protein}г Ж:${remaining.fat}г У:${remaining.carbs}г)
-
-Дай короткую рекомендацию (2-3 предложения): что лучше съесть на следующий приём пищи, учитывая баланс. Отвечай дружелюбно и по-русски.`
+          content: `You are a nutritionist in NutriBot app. Never mention Claude or Anthropic.
+User: ${userProfile.gender === 'male' ? 'male' : 'female'}, ${userProfile.weight}kg, goal: ${userProfile.goal}, activity: ${userProfile.activity || 'moderate'}.
+Eaten today: ${Math.round(todayTotals.total_calories)} kcal (P:${Math.round(todayTotals.total_protein)}g F:${Math.round(todayTotals.total_fat)}g C:${Math.round(todayTotals.total_carbs)}g)
+Daily target: ${norms.calories} kcal (P:${norms.protein}g F:${norms.fat}g C:${norms.carbs}g)
+Remaining: ${Math.round(remaining.calories)} kcal (P:${Math.round(remaining.protein)}g F:${Math.round(remaining.fat)}g C:${Math.round(remaining.carbs)}g)
+${userProfile.activity === 'active' || userProfile.activity === 'moderate' ? 'User is physically active — prioritise protein for recovery.' : 'User is sedentary — focus on portion control and fibre.'}
+Give a short recommendation (2-3 sentences): what to eat next, considering the balance. Be friendly. Reply in English.`
         }
       ]
     });
@@ -296,14 +317,16 @@ async function chatWithUser(userText, userProfile, todayTotals, isPro = false) {
   const goalMap = { lose: 'похудение', gain: 'набор массы', maintain: 'поддержание веса' };
   const genderMap = { male: 'мужчина', female: 'женщина' };
 
+  const activityLabels = { sedentary: 'sedentary', light: 'lightly active', moderate: 'moderately active', active: 'very active' };
+
   let context = '';
   if (userProfile && userProfile.calorie_norm) {
-    context = `Профиль пользователя: ${genderMap[userProfile.gender] || 'не указан'}, ${userProfile.age || '?'} лет, ${userProfile.weight || '?'} кг, рост ${userProfile.height || '?'} см, цель: ${goalMap[userProfile.goal] || 'не указана'}.
-Дневная норма: ${userProfile.calorie_norm} ккал (Б:${userProfile.protein_norm}г Ж:${userProfile.fat_norm}г У:${userProfile.carb_norm}г).`;
+    context = `User profile: ${genderMap[userProfile.gender] || 'unknown'}, ${userProfile.age || '?'} yo, ${userProfile.weight || '?'} kg, ${userProfile.height || '?'} cm, goal: ${goalMap[userProfile.goal] || 'unknown'}, activity: ${activityLabels[userProfile.activity] || 'moderate'}.
+Daily target: ${userProfile.calorie_norm} kcal (P:${userProfile.protein_norm}g F:${userProfile.fat_norm}g C:${userProfile.carb_norm}g).`;
     if (todayTotals && todayTotals.meals > 0) {
-      context += `\nСегодня съедено: ${Math.round(todayTotals.total_calories)} ккал (Б:${Math.round(todayTotals.total_protein)}г Ж:${Math.round(todayTotals.total_fat)}г У:${Math.round(todayTotals.total_carbs)}г).`;
+      context += `\nEaten today: ${Math.round(todayTotals.total_calories)} kcal (P:${Math.round(todayTotals.total_protein)}g F:${Math.round(todayTotals.total_fat)}g C:${Math.round(todayTotals.total_carbs)}g).`;
     } else {
-      context += '\nСегодня ещё ничего не съедено.';
+      context += '\nNothing eaten today yet.';
     }
   }
 
@@ -311,7 +334,7 @@ async function chatWithUser(userText, userProfile, todayTotals, isPro = false) {
     const response = await client.messages.create({
       model: isPro ? MODEL_VISION : MODEL_CHAT,
       max_tokens: isPro ? 1000 : 600,
-      system: `You are a friendly AI nutritionist in the NutriBot Telegram app. Answer concisely (2-4 sentences), in English, without markdown headers. Use the user's profile context if available. If the question is not about nutrition — gently steer back to food and health topics.`,
+      system: `You are a friendly nutritionist assistant in the NutriBot app. Never mention Claude, Anthropic, GPT or any AI company — you are NutriBot. If asked what AI you are, say you're NutriBot's smart nutrition engine. Answer concisely (2-4 sentences), in English, without markdown headers. Use the user's profile context when available. If the question is off-topic, gently steer back to food and health.`,
       messages: [
         {
           role: 'user',
@@ -326,4 +349,44 @@ async function chatWithUser(userText, userProfile, todayTotals, isPro = false) {
   }
 }
 
-module.exports = { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe };
+async function generateWeeklyReport(user, thisWeek, lastWeek) {
+  const avg = (rows, field) => rows.length ? rows.reduce((s, r) => s + r[field], 0) / rows.length : 0;
+
+  const thisCalAvg = avg(thisWeek, 'total_calories');
+  const lastCalAvg = avg(lastWeek, 'total_calories');
+  const thisPAvg   = avg(thisWeek, 'total_protein');
+  const lastPAvg   = avg(lastWeek, 'total_protein');
+
+  const goalMap = { lose: 'weight loss', gain: 'muscle gain', maintain: 'maintenance', recomp: 'body recomposition' };
+  const activityLabels = { sedentary: 'sedentary', light: 'lightly active', moderate: 'moderately active', active: 'very active' };
+
+  const prompt = `You are a nutritionist in NutriBot. Never mention Claude or Anthropic.
+Generate a weekly nutrition report comparing this week vs last week. Be encouraging and specific.
+
+User: ${user.gender === 'male' ? 'male' : 'female'}, ${user.weight}kg, goal: ${goalMap[user.goal] || user.goal}, activity: ${activityLabels[user.activity] || 'moderate'}.
+Daily targets: ${user.calorie_norm} kcal, Protein: ${user.protein_norm}g.
+
+This week (${thisWeek.length} days logged):
+- Avg calories/day: ${Math.round(thisCalAvg)} kcal (target: ${user.calorie_norm})
+- Avg protein/day: ${Math.round(thisPAvg)}g (target: ${user.protein_norm}g)
+
+Last week (${lastWeek.length} days logged):
+- Avg calories/day: ${Math.round(lastCalAvg)} kcal
+- Avg protein/day: ${Math.round(lastPAvg)}g
+
+Write a 3-4 sentence report with: trend assessment (better/worse/same), what's going well, one specific improvement tip tailored to their goal and activity level. Reply in English.`;
+
+  try {
+    const response = await client.messages.create({
+      model: MODEL_CHAT,
+      max_tokens: 400,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    return response.content[0].text;
+  } catch (error) {
+    console.error('Weekly report error:', error.message);
+    return null;
+  }
+}
+
+module.exports = { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe, generateWeeklyReport };
