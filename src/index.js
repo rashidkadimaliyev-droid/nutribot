@@ -5,7 +5,8 @@ const { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser } = req
 const {
   initDB, getUser, createUser, updateUserProfile,
   addFoodLog, getTodayLog, getTodayTotals,
-  checkAndUpdateUsage, incrementUsage, upgradeUser, savePayment
+  checkAndUpdateUsage, incrementUsage, upgradeUser, savePayment,
+  checkChatUsage, incrementChatUsage
 } = require('./database');
 const t = require('./translations');
 
@@ -124,6 +125,15 @@ bot.onText(/\/tip/, async (msg) => {
     return bot.sendMessage(chatId, t.tip_no_profile);
   }
 
+  if (user.plan !== 'premium') {
+    return bot.sendMessage(chatId, t.tip_premium_only, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: '⭐ Upgrade to Premium', callback_data: 'open_upgrade' }]]
+      }
+    });
+  }
+
   const totals = getTodayTotals.get(chatId);
   const norms = {
     calories: user.calorie_norm,
@@ -198,6 +208,25 @@ bot.on('callback_query', async (query) => {
     await bot.sendMessage(chatId, t.ask_age);
   }
 
+  // Upgrade shortcut from tip/chat limit buttons
+  if (data === 'open_upgrade') {
+    const user = getUser.get(chatId);
+    if (user && user.plan === 'premium') {
+      return bot.sendMessage(chatId, t.upgrade_already_premium);
+    }
+    await bot.sendMessage(chatId, t.upgrade_menu, { parse_mode: 'Markdown' });
+    await bot.sendInvoice(
+      chatId,
+      t.upgrade_invoice_title,
+      t.upgrade_invoice_description,
+      'premium_monthly',
+      '',
+      'XTR',
+      [{ label: 'Premium — 1 month', amount: 100 }]
+    );
+    return;
+  }
+
   // Goal selection
   if (data.startsWith('goal_')) {
     const goal = data.replace('goal_', '');
@@ -235,10 +264,20 @@ bot.on('message', async (msg) => {
     if (!text) return;
 
     const user = getUser.get(chatId);
-    const totals = user ? getTodayTotals.get(chatId) : null;
 
+    const chatUsage = checkChatUsage(chatId);
+    if (!chatUsage.allowed) {
+      return bot.sendMessage(chatId, t.chat_limit_reached, {
+        reply_markup: {
+          inline_keyboard: [[{ text: '⭐ Upgrade to Premium', callback_data: 'open_upgrade' }]]
+        }
+      });
+    }
+
+    const totals = user ? getTodayTotals.get(chatId) : null;
     const reply = await chatWithUser(text, user, totals);
     if (reply) {
+      incrementChatUsage(chatId);
       await bot.sendMessage(chatId, reply);
     }
     return;

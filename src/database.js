@@ -67,10 +67,16 @@ async function initDB() {
   // Migrate: add plan column if it doesn't exist yet
   try {
     db.run(`ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'`);
-    // Copy existing is_premium flags to plan
     db.run(`UPDATE users SET plan = 'premium' WHERE is_premium = 1`);
   } catch (e) {
     // Column already exists — migration already ran
+  }
+
+  // Migrate: add daily_chat_uses column if it doesn't exist yet
+  try {
+    db.run(`ALTER TABLE users ADD COLUMN daily_chat_uses INTEGER DEFAULT 0`);
+  } catch (e) {
+    // Column already exists
   }
 
   saveDB();
@@ -186,6 +192,38 @@ function checkAndUpdateUsage(telegramId) {
   return { allowed: true, remaining: FREE_LIMIT - user.daily_uses };
 }
 
+const CHAT_FREE_LIMIT = 3;
+
+function checkChatUsage(telegramId) {
+  const today = new Date().toISOString().split('T')[0];
+  const user = getUser.get(telegramId);
+  if (!user) return { allowed: false, remaining: 0 };
+
+  if (user.plan === 'premium') return { allowed: true, remaining: 999 };
+
+  // Reset counter if it's a new day
+  if (user.last_use_date !== today) {
+    db.run('UPDATE users SET daily_chat_uses = 0 WHERE telegram_id = ?', [telegramId]);
+    saveDB();
+    return { allowed: true, remaining: CHAT_FREE_LIMIT };
+  }
+
+  const used = user.daily_chat_uses || 0;
+  if (used >= CHAT_FREE_LIMIT) return { allowed: false, remaining: 0 };
+
+  return { allowed: true, remaining: CHAT_FREE_LIMIT - used };
+}
+
+function incrementChatUsage(telegramId) {
+  const user = getUser.get(telegramId);
+  const today = new Date().toISOString().split('T')[0];
+  db.run(
+    'UPDATE users SET daily_chat_uses = ?, last_use_date = ? WHERE telegram_id = ?',
+    [(user?.daily_chat_uses || 0) + 1, today, telegramId]
+  );
+  saveDB();
+}
+
 function upgradeUser(telegramId) {
   db.run(`UPDATE users SET plan = 'premium' WHERE telegram_id = ?`, [telegramId]);
   saveDB();
@@ -219,5 +257,7 @@ module.exports = {
   checkAndUpdateUsage,
   incrementUsage,
   upgradeUser,
-  savePayment
+  savePayment,
+  checkChatUsage,
+  incrementChatUsage
 };

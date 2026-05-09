@@ -115,6 +115,16 @@ const t = {
     `💫 *Price: 100 Telegram Stars / month*\n\n` +
     `Tap the button below to pay with Telegram Stars:`,
 
+  chat_limit_reached:
+    `💬 You've used all 3 free chat messages for today.\n\n` +
+    `⭐ Upgrade to Premium for unlimited AI nutrition chat!`,
+
+  tip_premium_only:
+    `💡 *Nutrition tips are a Premium feature.*\n\n` +
+    `🆓 Free plan includes 3 photo analyses/day.\n` +
+    `👑 Premium unlocks unlimited analyses + tips + AI chat.\n\n` +
+    `Upgrade for 100 ⭐ Stars/month:`,
+
   upgrade_already_premium: `👑 You already have Premium! Enjoy unlimited analyses.`,
   upgrade_success: `🎉 *Payment successful!*\n\n👑 You now have *NutriBot Premium*.\nEnjoy unlimited food analyses!`,
   upgrade_invoice_title: `NutriBot Premium`,
