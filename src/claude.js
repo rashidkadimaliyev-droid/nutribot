@@ -2,6 +2,9 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic();
 
+const MODEL_VISION = 'claude-sonnet-4-20250514';
+const MODEL_CHAT = 'claude-haiku-4-5-20251001';
+
 const SYSTEM_PROMPT = `Ты — профессиональный нутрициолог-аналитик со специализацией на русской, среднеазиатской, грузинской, турецкой, азербайджанской и кавказской кухне. Твоя задача — анализировать фото еды и определять:
 1. Название блюда/продукта
 2. Примерный вес порции в граммах
@@ -120,7 +123,7 @@ const SYSTEM_PROMPT = `Ты — профессиональный нутрици�
 async function analyzeFood(imageBase64, mediaType = 'image/jpeg') {
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL_VISION,
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: [
@@ -209,7 +212,7 @@ async function getDietRecommendation(userProfile, todayTotals, norms) {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL_CHAT,
       max_tokens: 512,
       messages: [
         {
@@ -249,7 +252,7 @@ async function chatWithUser(userText, userProfile, todayTotals) {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODEL_CHAT,
       max_tokens: 600,
       system: `Ты — дружелюбный AI-нутрициолог в Telegram-боте NutriBot. Отвечай коротко (2-4 предложения), по-русски, без markdown-заголовков. Используй контекст профиля пользователя если он есть. Если вопрос не про питание — мягко переведи тему на еду и здоровье.`,
       messages: [
