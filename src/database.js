@@ -173,6 +173,46 @@ const getTodayTotals = {
   }
 };
 
+function getWeekSummary(telegramId) {
+  const stmt = db.prepare(`
+    SELECT date(logged_at) as date,
+           COUNT(*) as meals,
+           COALESCE(SUM(calories), 0) as total_calories,
+           COALESCE(SUM(protein), 0) as total_protein,
+           COALESCE(SUM(fat), 0) as total_fat,
+           COALESCE(SUM(carbs), 0) as total_carbs
+    FROM food_log
+    WHERE telegram_id = ? AND date(logged_at) >= date('now', '-6 days')
+    GROUP BY date(logged_at)
+    ORDER BY date(logged_at) ASC
+  `);
+  stmt.bind([telegramId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getMonthSummary(telegramId) {
+  const stmt = db.prepare(`
+    SELECT date(logged_at) as date,
+           COUNT(*) as meals,
+           COALESCE(SUM(calories), 0) as total_calories,
+           COALESCE(SUM(protein), 0) as total_protein,
+           COALESCE(SUM(fat), 0) as total_fat,
+           COALESCE(SUM(carbs), 0) as total_carbs
+    FROM food_log
+    WHERE telegram_id = ? AND date(logged_at) >= date('now', '-29 days')
+    GROUP BY date(logged_at)
+    ORDER BY date(logged_at) ASC
+  `);
+  stmt.bind([telegramId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
 function checkAndUpdateUsage(telegramId) {
   const today = new Date().toISOString().split('T')[0];
   const user = getUser.get(telegramId);
@@ -224,8 +264,8 @@ function incrementChatUsage(telegramId) {
   saveDB();
 }
 
-function upgradeUser(telegramId) {
-  db.run(`UPDATE users SET plan = 'premium' WHERE telegram_id = ?`, [telegramId]);
+function upgradeUser(telegramId, plan = 'premium') {
+  db.run(`UPDATE users SET plan = ? WHERE telegram_id = ?`, [plan, telegramId]);
   saveDB();
 }
 
@@ -254,6 +294,8 @@ module.exports = {
   addFoodLog,
   getTodayLog,
   getTodayTotals,
+  getWeekSummary,
+  getMonthSummary,
   checkAndUpdateUsage,
   incrementUsage,
   upgradeUser,

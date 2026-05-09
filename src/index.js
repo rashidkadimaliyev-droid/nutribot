@@ -1,10 +1,11 @@
 const TelegramBot = require('node-telegram-bot-api');
 const https = require('https');
 const http = require('http');
-const { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser } = require('./claude');
+const { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe } = require('./claude');
 const {
   initDB, getUser, createUser, updateUserProfile,
   addFoodLog, getTodayLog, getTodayTotals,
+  getWeekSummary, getMonthSummary,
   checkAndUpdateUsage, incrementUsage, upgradeUser, savePayment,
   checkChatUsage, incrementChatUsage
 } = require('./database');
@@ -193,6 +194,118 @@ bot.onText(/\/upgrade/, async (msg) => {
   );
 });
 
+bot.onText(/\/history/, async (msg) => {
+  const chatId = msg.chat.id;
+  const user = getUser.get(chatId);
+
+  if (!user || user.plan === 'free') {
+    return bot.sendMessage(chatId, t.history_premium_only, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [[{ text: '⭐ Upgrade to Premium', callback_data: 'open_upgrade' }]] }
+    });
+  }
+
+  const week = getWeekSummary(chatId);
+  if (week.length === 0) {
+    return bot.sendMessage(chatId, t.history_no_data);
+  }
+
+  let text = t.history_week_header;
+  week.forEach(row => {
+    text += t.history_day(row.date, row.total_calories, row.total_protein, row.total_fat, row.total_carbs);
+  });
+
+  const month = getMonthSummary(chatId);
+  if (month.length > 0) {
+    const avg = month.reduce((a, r) => ({
+      cal: a.cal + r.total_calories, p: a.p + r.total_protein,
+      f: a.f + r.total_fat, c: a.c + r.total_carbs
+    }), { cal: 0, p: 0, f: 0, c: 0 });
+    const n = month.length;
+    text += t.history_month_header;
+    text += t.history_avg(avg.cal / n, avg.p / n, avg.f / n, avg.c / n);
+  }
+
+  await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+});
+
+bot.onText(/\/mealplan/, async (msg) => {
+  const chatId = msg.chat.id;
+  const user = getUser.get(chatId);
+
+  if (!user || user.plan === 'free') {
+    return bot.sendMessage(chatId, t.mealplan_premium_only, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [[{ text: '⭐ Upgrade to Premium', callback_data: 'open_upgrade' }]] }
+    });
+  }
+  if (!user.calorie_norm) {
+    return bot.sendMessage(chatId, t.mealplan_no_profile);
+  }
+
+  const waitMsg = await bot.sendMessage(chatId, t.mealplan_generating);
+  const plan = await generateMealPlan(user);
+  await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
+
+  if (plan) {
+    await bot.sendMessage(chatId, t.mealplan_header + plan, { parse_mode: 'Markdown' });
+  } else {
+    await bot.sendMessage(chatId, t.mealplan_error);
+  }
+});
+
+bot.onText(/\/shoplist/, async (msg) => {
+  const chatId = msg.chat.id;
+  const user = getUser.get(chatId);
+
+  if (!user || user.plan !== 'pro') {
+    return bot.sendMessage(chatId, t.shoplist_pro_only, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [[{ text: '🚀 Upgrade to Pro', callback_data: 'open_upgrade_pro' }]] }
+    });
+  }
+  if (!user.calorie_norm) {
+    return bot.sendMessage(chatId, t.shoplist_no_profile);
+  }
+
+  const waitMsg = await bot.sendMessage(chatId, t.shoplist_generating);
+  const list = await generateShoppingList(user);
+  await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
+
+  if (list) {
+    await bot.sendMessage(chatId, t.shoplist_header + list, { parse_mode: 'Markdown' });
+  } else {
+    await bot.sendMessage(chatId, t.shoplist_error);
+  }
+});
+
+bot.onText(/\/recipe(?:\s+(.+))?/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const user = getUser.get(chatId);
+
+  if (!user || user.plan !== 'pro') {
+    return bot.sendMessage(chatId, t.recipe_pro_only, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [[{ text: '🚀 Upgrade to Pro', callback_data: 'open_upgrade_pro' }]] }
+    });
+  }
+
+  const recipeName = match[1]?.trim();
+  if (!recipeName) {
+    return bot.sendMessage(chatId, t.recipe_usage);
+  }
+
+  const waitMsg = await bot.sendMessage(chatId, t.recipe_generating(recipeName), { parse_mode: 'Markdown' });
+  const recipe = await generateRecipe(recipeName, user);
+  await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
+
+  if (recipe) {
+    await bot.sendMessage(chatId, t.recipe_header(recipeName) + recipe, { parse_mode: 'Markdown' });
+  } else {
+    await bot.sendMessage(chatId, t.recipe_error);
+  }
+});
+
 // ============ ONBOARDING CALLBACKS ============
 
 bot.on('callback_query', async (query) => {
@@ -223,6 +336,19 @@ bot.on('callback_query', async (query) => {
       '',
       'XTR',
       [{ label: 'Premium — 1 month', amount: 100 }]
+    );
+    return;
+  }
+
+  if (data === 'open_upgrade_pro') {
+    await bot.sendInvoice(
+      chatId,
+      'NutriBot Pro',
+      'Shopping lists, full recipes with macros, Claude Sonnet AI chat.',
+      'pro_monthly',
+      '',
+      'XTR',
+      [{ label: 'Pro — 1 month', amount: 200 }]
     );
     return;
   }
@@ -275,7 +401,8 @@ bot.on('message', async (msg) => {
     }
 
     const totals = user ? getTodayTotals.get(chatId) : null;
-    const reply = await chatWithUser(text, user, totals);
+    const isPro = user?.plan === 'pro';
+    const reply = await chatWithUser(text, user, totals, isPro);
     if (reply) {
       incrementChatUsage(chatId);
       await bot.sendMessage(chatId, reply);
@@ -426,7 +553,8 @@ bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const payment = msg.successful_payment;
 
-  upgradeUser(chatId);
+  const newPlan = payment.invoice_payload === 'pro_monthly' ? 'pro' : 'premium';
+  upgradeUser(chatId, newPlan);
   savePayment(
     chatId,
     payment.telegram_payment_charge_id,

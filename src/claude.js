@@ -235,7 +235,64 @@ async function getDietRecommendation(userProfile, todayTotals, norms) {
   }
 }
 
-async function chatWithUser(userText, userProfile, todayTotals) {
+async function generateMealPlan(userProfile) {
+  const goalMap = { lose: 'weight loss', gain: 'muscle gain', maintain: 'weight maintenance' };
+  const prompt = `You are a professional nutritionist. Create a 7-day meal plan for a ${userProfile.gender === 'male' ? 'man' : 'woman'}, ${userProfile.age} years old, ${userProfile.weight}kg, ${userProfile.height}cm, goal: ${goalMap[userProfile.goal] || 'maintenance'}.
+Daily targets: ${userProfile.calorie_norm} kcal, Protein: ${userProfile.protein_norm}g, Fat: ${userProfile.fat_norm}g, Carbs: ${userProfile.carb_norm}g.
+Format: for each day list Breakfast, Lunch, Dinner, Snack with approximate calories. Keep it concise. Reply in English.`;
+
+  try {
+    const response = await client.messages.create({
+      model: MODEL_VISION,
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    return response.content[0].text;
+  } catch (error) {
+    console.error('Meal plan error:', error.message);
+    return null;
+  }
+}
+
+async function generateShoppingList(userProfile) {
+  const goalMap = { lose: 'weight loss', gain: 'muscle gain', maintain: 'weight maintenance' };
+  const prompt = `You are a professional nutritionist. Generate a weekly grocery shopping list for a ${userProfile.gender === 'male' ? 'man' : 'woman'}, goal: ${goalMap[userProfile.goal] || 'maintenance'}, ${userProfile.calorie_norm} kcal/day.
+Group items by category: Proteins, Vegetables & Fruits, Grains & Carbs, Dairy, Fats & Oils, Other.
+Include approximate quantities for one person for 7 days. Reply in English.`;
+
+  try {
+    const response = await client.messages.create({
+      model: MODEL_VISION,
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    return response.content[0].text;
+  } catch (error) {
+    console.error('Shopping list error:', error.message);
+    return null;
+  }
+}
+
+async function generateRecipe(recipeName, userProfile) {
+  const prompt = `You are a professional nutritionist and chef. Provide a detailed recipe for "${recipeName}".
+Include: ingredients with exact amounts (for 1 serving), step-by-step instructions, and full nutrition info per serving (calories, protein, fat, carbs).
+${userProfile ? `The user's daily target is ${userProfile.calorie_norm} kcal — comment if this dish fits their goal (${userProfile.goal}).` : ''}
+Reply in English.`;
+
+  try {
+    const response = await client.messages.create({
+      model: MODEL_VISION,
+      max_tokens: 1200,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    return response.content[0].text;
+  } catch (error) {
+    console.error('Recipe error:', error.message);
+    return null;
+  }
+}
+
+async function chatWithUser(userText, userProfile, todayTotals, isPro = false) {
   const goalMap = { lose: 'похудение', gain: 'набор массы', maintain: 'поддержание веса' };
   const genderMap = { male: 'мужчина', female: 'женщина' };
 
@@ -252,13 +309,13 @@ async function chatWithUser(userText, userProfile, todayTotals) {
 
   try {
     const response = await client.messages.create({
-      model: MODEL_CHAT,
-      max_tokens: 600,
-      system: `Ты — дружелюбный AI-нутрициолог в Telegram-боте NutriBot. Отвечай коротко (2-4 предложения), по-русски, без markdown-заголовков. Используй контекст профиля пользователя если он есть. Если вопрос не про питание — мягко переведи тему на еду и здоровье.`,
+      model: isPro ? MODEL_VISION : MODEL_CHAT,
+      max_tokens: isPro ? 1000 : 600,
+      system: `You are a friendly AI nutritionist in the NutriBot Telegram app. Answer concisely (2-4 sentences), in English, without markdown headers. Use the user's profile context if available. If the question is not about nutrition — gently steer back to food and health topics.`,
       messages: [
         {
           role: 'user',
-          content: context ? `${context}\n\nВопрос пользователя: ${userText}` : userText
+          content: context ? `${context}\n\nUser's question: ${userText}` : userText
         }
       ]
     });
@@ -269,4 +326,4 @@ async function chatWithUser(userText, userProfile, todayTotals) {
   }
 }
 
-module.exports = { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser };
+module.exports = { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe };

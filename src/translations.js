@@ -38,13 +38,23 @@ const t = {
 
   // /help
   help: `🥗 *NutriBot — Commands:*\n\n` +
-    `📸 *Send a photo* — analyze calories & macros\n` +
+    `*🆓 Free*\n` +
+    `📸 Send a photo — analyze calories & macros _(3/day)_\n` +
+    `💬 Chat with AI nutritionist _(3 msgs/day)_\n` +
     `📊 /today — today's food diary\n` +
-    `💡 /tip — recommendation on what to eat\n` +
     `⚙️ /profile — set up your profile\n` +
-    `❓ /help — this help message\n\n` +
-    `🆓 Free: 3 analyses per day\n` +
-    `⭐ Premium: unlimited`,
+    `⭐ /upgrade — get Premium or Pro\n\n` +
+    `*👑 Premium (100 ⭐/mo)*\n` +
+    `📸 Unlimited photo analyses\n` +
+    `💬 Unlimited AI chat\n` +
+    `💡 /tip — personalised nutrition tip\n` +
+    `📅 /history — weekly & monthly stats\n` +
+    `🍽 /mealplan — 7-day meal plan\n\n` +
+    `*🚀 Pro (200 ⭐/mo)*\n` +
+    `🛒 /shoplist — weekly shopping list\n` +
+    `👨‍🍳 /recipe [dish] — full recipe with macros\n` +
+    `💬 AI chat powered by Claude Sonnet\n\n` +
+    `❓ /help — this help message`,
 
   // onboarding buttons
   btn_male: `👨 Male`,
@@ -124,6 +134,31 @@ const t = {
     `🆓 Free plan includes 3 photo analyses/day.\n` +
     `👑 Premium unlocks unlimited analyses + tips + AI chat.\n\n` +
     `Upgrade for 100 ⭐ Stars/month:`,
+
+  history_no_data: `📅 No food log entries found for the past 7 days.\n\n📸 Send a food photo to start tracking!`,
+  history_week_header: `📅 *Last 7 days:*\n\n`,
+  history_month_header: `\n📆 *Last 30 days average:*\n`,
+  history_day: (date, cal, p, f, c) => `${date}: *${Math.round(cal)} kcal* (P:${Math.round(p)} F:${Math.round(f)} C:${Math.round(c)})\n`,
+  history_avg: (cal, p, f, c) => `Avg/day: *${Math.round(cal)} kcal* | P:${Math.round(p)}g F:${Math.round(f)}g C:${Math.round(c)}g`,
+  history_premium_only: `📅 *Weekly & monthly history is a Premium feature.*\n\nUpgrade to see your progress over time:`,
+
+  mealplan_generating: `🍽 Generating your 7-day meal plan...`,
+  mealplan_header: `🍽 *Your 7-Day Meal Plan:*\n\n`,
+  mealplan_no_profile: `⚙️ Set up your profile first so I can personalise the plan: /profile`,
+  mealplan_premium_only: `🍽 *Meal plans are a Premium feature.*\n\nUpgrade to get a personalised 7-day plan:`,
+  mealplan_error: `❌ Couldn't generate a meal plan. Please try again.`,
+
+  shoplist_generating: `🛒 Generating your shopping list...`,
+  shoplist_header: `🛒 *Your Weekly Shopping List:*\n\n`,
+  shoplist_no_profile: `⚙️ Set up your profile first: /profile`,
+  shoplist_pro_only: `🛒 *Shopping lists are a Pro feature.*\n\nUpgrade to Pro for shopping lists, advanced recipes, and Claude Sonnet chat:`,
+  shoplist_error: `❌ Couldn't generate a shopping list. Please try again.`,
+
+  recipe_usage: `👨‍🍳 Usage: /recipe <dish name>\nExample: /recipe chicken stir-fry`,
+  recipe_generating: (name) => `👨‍🍳 Finding recipe for *${name}*...`,
+  recipe_header: (name) => `👨‍🍳 *Recipe: ${name}*\n\n`,
+  recipe_pro_only: `👨‍🍳 *Recipes are a Pro feature.*\n\nUpgrade to Pro for full recipes with macros and Claude Sonnet chat:`,
+  recipe_error: `❌ Couldn't generate the recipe. Please try again.`,
 
   upgrade_already_premium: `👑 You already have Premium! Enjoy unlimited analyses.`,
   upgrade_success: `🎉 *Payment successful!*\n\n👑 You now have *NutriBot Premium*.\nEnjoy unlimited food analyses!`,
