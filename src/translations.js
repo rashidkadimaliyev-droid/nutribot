@@ -106,6 +106,19 @@ const t = {
     `${bar}\n`,
 
   analyses_remaining: (n) => `\n📸 Analyses left: ${n}/3`,
+
+  // /upgrade
+  upgrade_menu:
+    `⭐ *NutriBot Premium*\n\n` +
+    `🆓 *Free plan:* 3 photo analyses per day\n` +
+    `👑 *Premium plan:* unlimited analyses + priority support\n\n` +
+    `💫 *Price: 100 Telegram Stars / month*\n\n` +
+    `Tap the button below to pay with Telegram Stars:`,
+
+  upgrade_already_premium: `👑 You already have Premium! Enjoy unlimited analyses.`,
+  upgrade_success: `🎉 *Payment successful!*\n\n👑 You now have *NutriBot Premium*.\nEnjoy unlimited food analyses!`,
+  upgrade_invoice_title: `NutriBot Premium`,
+  upgrade_invoice_description: `Unlimited food photo analyses. No daily limits.`,
 };
 
 module.exports = t;

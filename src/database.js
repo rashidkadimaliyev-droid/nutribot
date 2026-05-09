@@ -52,6 +52,27 @@ async function initDB() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      telegram_id INTEGER,
+      telegram_payment_charge_id TEXT,
+      amount INTEGER,
+      currency TEXT,
+      plan TEXT,
+      paid_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Migrate: add plan column if it doesn't exist yet
+  try {
+    db.run(`ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'`);
+    // Copy existing is_premium flags to plan
+    db.run(`UPDATE users SET plan = 'premium' WHERE is_premium = 1`);
+  } catch (e) {
+    // Column already exists — migration already ran
+  }
+
   saveDB();
   console.log('Database initialized');
 }
@@ -157,12 +178,26 @@ function checkAndUpdateUsage(telegramId) {
     return { allowed: true, remaining: 3 };
   }
 
-  if (user.is_premium) return { allowed: true, remaining: 999 };
+  if (user.plan === 'premium') return { allowed: true, remaining: 999 };
 
   const FREE_LIMIT = 3;
   if (user.daily_uses >= FREE_LIMIT) return { allowed: false, remaining: 0 };
 
   return { allowed: true, remaining: FREE_LIMIT - user.daily_uses };
+}
+
+function upgradeUser(telegramId) {
+  db.run(`UPDATE users SET plan = 'premium' WHERE telegram_id = ?`, [telegramId]);
+  saveDB();
+}
+
+function savePayment(telegramId, chargeId, amount, currency, plan) {
+  db.run(
+    `INSERT INTO payments (telegram_id, telegram_payment_charge_id, amount, currency, plan)
+     VALUES (?, ?, ?, ?, ?)`,
+    [telegramId, chargeId, amount, currency, plan]
+  );
+  saveDB();
 }
 
 function incrementUsage(telegramId) {
@@ -182,5 +217,7 @@ module.exports = {
   getTodayLog,
   getTodayTotals,
   checkAndUpdateUsage,
-  incrementUsage
+  incrementUsage,
+  upgradeUser,
+  savePayment
 };

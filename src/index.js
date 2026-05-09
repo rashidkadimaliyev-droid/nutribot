@@ -5,7 +5,7 @@ const { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser } = req
 const {
   initDB, getUser, createUser, updateUserProfile,
   addFoodLog, getTodayLog, getTodayTotals,
-  checkAndUpdateUsage, incrementUsage
+  checkAndUpdateUsage, incrementUsage, upgradeUser, savePayment
 } = require('./database');
 const t = require('./translations');
 
@@ -160,6 +160,27 @@ bot.onText(/\/profile/, async (msg) => {
 
 bot.onText(/\/help/, async (msg) => {
   await bot.sendMessage(msg.chat.id, t.help, { parse_mode: 'Markdown' });
+});
+
+bot.onText(/\/upgrade/, async (msg) => {
+  const chatId = msg.chat.id;
+  const user = getUser.get(chatId);
+
+  if (user && user.plan === 'premium') {
+    return bot.sendMessage(chatId, t.upgrade_already_premium);
+  }
+
+  await bot.sendMessage(chatId, t.upgrade_menu, { parse_mode: 'Markdown' });
+
+  await bot.sendInvoice(
+    chatId,
+    t.upgrade_invoice_title,
+    t.upgrade_invoice_description,
+    'premium_monthly',
+    '',           // provider_token — empty string for Telegram Stars
+    'XTR',        // Telegram Stars currency
+    [{ label: 'Premium — 1 month', amount: 100 }]
+  );
 });
 
 // ============ ONBOARDING CALLBACKS ============
@@ -352,6 +373,30 @@ bot.on('photo', async (msg) => {
     await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
     await bot.sendMessage(chatId, t.analysis_error);
   }
+});
+
+// ============ PAYMENTS ============
+
+bot.on('pre_checkout_query', async (query) => {
+  await bot.answerPreCheckoutQuery(query.id, true);
+});
+
+bot.on('message', async (msg) => {
+  if (!msg.successful_payment) return;
+
+  const chatId = msg.chat.id;
+  const payment = msg.successful_payment;
+
+  upgradeUser(chatId);
+  savePayment(
+    chatId,
+    payment.telegram_payment_charge_id,
+    payment.total_amount,
+    payment.currency,
+    payment.invoice_payload
+  );
+
+  await bot.sendMessage(chatId, t.upgrade_success, { parse_mode: 'Markdown' });
 });
 
 // ============ HEALTH CHECK SERVER ============
