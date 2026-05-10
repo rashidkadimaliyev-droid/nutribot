@@ -12,6 +12,7 @@ const {
 const t = require('./translations');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const ADMIN_ID = parseInt(process.env.ADMIN_ID, 10);
 const PORT = process.env.PORT || 3000;
 
 if (!BOT_TOKEN) {
@@ -306,6 +307,46 @@ bot.onText(/\/recipe(?:\s+(.+))?/, async (msg, match) => {
   }
 });
 
+// ============ ADMIN ============
+
+bot.onText(/\/admin(?:\s+(\S+))?(?:\s+(\d+))?/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  if (msg.from.id !== ADMIN_ID) return;
+
+  const plan    = match[1]; // optional: free/premium/pro
+  const target  = match[2] ? parseInt(match[2], 10) : chatId;
+
+  // /admin — show current status + buttons
+  if (!plan) {
+    const user = getUser.get(chatId);
+    const currentPlan = user?.plan || 'free';
+    await bot.sendMessage(chatId,
+      `🔧 *Admin Panel*\n\nYour plan: *${currentPlan}*`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🆓 Free',    callback_data: 'admin_free' },
+            { text: '👑 Premium', callback_data: 'admin_premium' },
+            { text: '🚀 Pro',     callback_data: 'admin_pro' }
+          ]]
+        }
+      }
+    );
+    return;
+  }
+
+  // /admin [plan] or /admin [plan] [user_id]
+  const validPlans = ['free', 'premium', 'pro'];
+  if (!validPlans.includes(plan)) {
+    return bot.sendMessage(chatId, `❌ Unknown plan: ${plan}. Use: free / premium / pro`);
+  }
+
+  upgradeUser(target, plan);
+  const updated = getUser.get(target);
+  await bot.sendMessage(chatId, `✅ User \`${target}\` → *${plan}*\nName: ${updated?.name || 'unknown'}`, { parse_mode: 'Markdown' });
+});
+
 // ============ ONBOARDING CALLBACKS ============
 
 bot.on('callback_query', async (query) => {
@@ -319,6 +360,28 @@ bot.on('callback_query', async (query) => {
     const gender = data === 'gender_male' ? 'male' : 'female';
     onboardingState[chatId] = { gender, step: 'age' };
     await bot.sendMessage(chatId, t.ask_age);
+  }
+
+  // Admin plan switch
+  if (data.startsWith('admin_') && query.from.id === ADMIN_ID) {
+    const plan = data.replace('admin_', '');
+    upgradeUser(chatId, plan);
+    await bot.editMessageText(
+      `🔧 *Admin Panel*\n\nYour plan: *${plan}* ✅`,
+      {
+        chat_id: chatId,
+        message_id: query.message.message_id,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🆓 Free',    callback_data: 'admin_free' },
+            { text: '👑 Premium', callback_data: 'admin_premium' },
+            { text: '🚀 Pro',     callback_data: 'admin_pro' }
+          ]]
+        }
+      }
+    );
+    return;
   }
 
   // Upgrade shortcut from tip/chat limit buttons
