@@ -309,12 +309,13 @@ bot.onText(/\/recipe(?:\s+(.+))?/, async (msg, match) => {
 
 // ============ ADMIN ============
 
-bot.onText(/\/admin(?:\s+(\S+))?(?:\s+(\d+))?/, async (msg, match) => {
+bot.onText(/\/admin(@\w+)?(?:\s+(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   if (msg.from.id !== ADMIN_ID) return;
 
-  const plan    = match[1]; // optional: free/premium/pro
-  const target  = match[2] ? parseInt(match[2], 10) : chatId;
+  const args   = match[2]?.trim().split(/\s+/);
+  const plan   = args?.[0]; // optional: free/premium/pro
+  const target = args?.[1] ? parseInt(args[1], 10) : chatId;
 
   // /admin — show current status + buttons
   if (!plan) {
