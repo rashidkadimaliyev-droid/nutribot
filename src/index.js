@@ -12,7 +12,7 @@ const {
 const t = require('./translations');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ADMIN_ID = parseInt(process.env.ADMIN_ID, 10);
+const ADMIN_ID = 564884556;
 const PORT = process.env.PORT || 3000;
 
 if (!BOT_TOKEN) {
