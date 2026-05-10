@@ -9,7 +9,7 @@ const {
   checkAndUpdateUsage, incrementUsage, upgradeUser, savePayment,
   checkChatUsage, incrementChatUsage
 } = require('./database');
-const t = require('./translations');
+const { t, getLang } = require('./translations');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ADMIN_ID = 564884556;
@@ -26,6 +26,10 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const onboardingState = {};
 
 // ============ HELPERS ============
+
+function userLang(msg) {
+  return getLang(msg.from?.language_code);
+}
 
 function formatNumber(n) {
   return Math.round(n);
@@ -57,20 +61,21 @@ async function downloadFile(fileId) {
 
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const name = msg.from.first_name || 'friend';
 
-  createUser.run(chatId, name);
+  createUser.run(chatId, name, lang);
   const user = getUser.get(chatId);
 
   if (user && user.calorie_norm) {
-    await bot.sendMessage(chatId, t.welcome_back(name));
+    await bot.sendMessage(chatId, t(lang).welcome_back(name));
   } else {
-    await bot.sendMessage(chatId, t.welcome_new(name), {
+    await bot.sendMessage(chatId, t(lang).welcome_new(name), {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: t.btn_male, callback_data: 'gender_male' },
-            { text: t.btn_female, callback_data: 'gender_female' }
+            { text: t(lang).btn_male, callback_data: 'gender_male' },
+            { text: t(lang).btn_female, callback_data: 'gender_female' }
           ]
         ]
       }
@@ -80,28 +85,29 @@ bot.onText(/\/start/, async (msg) => {
 
 bot.onText(/\/today/, async (msg) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const user = getUser.get(chatId);
 
   if (!user) {
-    return bot.sendMessage(chatId, t.no_user);
+    return bot.sendMessage(chatId, t(lang).no_user);
   }
 
   const totals = getTodayTotals.get(chatId);
   const log = getTodayLog.all(chatId);
 
   if (totals.meals === 0) {
-    return bot.sendMessage(chatId, t.no_meals_today);
+    return bot.sendMessage(chatId, t(lang).no_meals_today);
   }
 
-  let text = t.today_header;
+  let text = t(lang).today_header;
 
   log.forEach((item, i) => {
     const time = item.logged_at.split(' ')[1]?.substring(0, 5) || '';
     text += `${i + 1}. ${item.food_name} — ${formatNumber(item.calories)} kcal _(${time})_\n`;
   });
 
-  text += t.today_separator;
-  text += t.today_total(
+  text += t(lang).today_separator;
+  text += t(lang).today_total(
     formatNumber(totals.total_calories),
     formatNumber(totals.total_protein),
     formatNumber(totals.total_fat),
@@ -109,11 +115,11 @@ bot.onText(/\/today/, async (msg) => {
   );
 
   if (user.calorie_norm) {
-    text += t.today_progress_header;
-    text += t.today_calories(progressBar(totals.total_calories, user.calorie_norm));
-    text += t.today_protein(progressBar(totals.total_protein, user.protein_norm));
-    text += t.today_fat(progressBar(totals.total_fat, user.fat_norm));
-    text += t.today_carbs(progressBar(totals.total_carbs, user.carb_norm));
+    text += t(lang).today_progress_header;
+    text += t(lang).today_calories(progressBar(totals.total_calories, user.calorie_norm));
+    text += t(lang).today_protein(progressBar(totals.total_protein, user.protein_norm));
+    text += t(lang).today_fat(progressBar(totals.total_fat, user.fat_norm));
+    text += t(lang).today_carbs(progressBar(totals.total_carbs, user.carb_norm));
   }
 
   await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
@@ -121,14 +127,15 @@ bot.onText(/\/today/, async (msg) => {
 
 bot.onText(/\/tip/, async (msg) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const user = getUser.get(chatId);
 
   if (!user || !user.calorie_norm) {
-    return bot.sendMessage(chatId, t.tip_no_profile);
+    return bot.sendMessage(chatId, t(lang).tip_no_profile);
   }
 
   if (user.plan !== 'premium') {
-    return bot.sendMessage(chatId, t.tip_premium_only, {
+    return bot.sendMessage(chatId, t(lang).tip_premium_only, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: '⭐ Upgrade to Premium', callback_data: 'open_upgrade' }]]
@@ -144,26 +151,27 @@ bot.onText(/\/tip/, async (msg) => {
     carbs: user.carb_norm
   };
 
-  await bot.sendMessage(chatId, t.tip_thinking);
+  await bot.sendMessage(chatId, t(lang).tip_thinking);
 
   const tip = await getDietRecommendation(user, totals, norms);
   if (tip) {
-    await bot.sendMessage(chatId, t.tip_result(tip), { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, t(lang).tip_result(tip), { parse_mode: 'Markdown' });
   } else {
-    await bot.sendMessage(chatId, t.tip_error);
+    await bot.sendMessage(chatId, t(lang).tip_error);
   }
 });
 
 bot.onText(/\/profile/, async (msg) => {
   const chatId = msg.chat.id;
-  createUser.run(chatId, msg.from.first_name || 'friend');
+  const lang = userLang(msg);
+  createUser.run(chatId, msg.from.first_name || 'friend', lang);
 
-  await bot.sendMessage(chatId, t.profile_ask_gender, {
+  await bot.sendMessage(chatId, t(lang).profile_ask_gender, {
     reply_markup: {
       inline_keyboard: [
         [
-          { text: t.btn_male, callback_data: 'gender_male' },
-          { text: t.btn_female, callback_data: 'gender_female' }
+          { text: t(lang).btn_male, callback_data: 'gender_male' },
+          { text: t(lang).btn_female, callback_data: 'gender_female' }
         ]
       ]
     }
@@ -171,23 +179,25 @@ bot.onText(/\/profile/, async (msg) => {
 });
 
 bot.onText(/\/help/, async (msg) => {
-  await bot.sendMessage(msg.chat.id, t.help, { parse_mode: 'Markdown' });
+  const lang = userLang(msg);
+  await bot.sendMessage(msg.chat.id, t(lang).help, { parse_mode: 'Markdown' });
 });
 
 bot.onText(/\/upgrade/, async (msg) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const user = getUser.get(chatId);
 
   if (user && user.plan === 'premium') {
-    return bot.sendMessage(chatId, t.upgrade_already_premium);
+    return bot.sendMessage(chatId, t(lang).upgrade_already_premium);
   }
 
-  await bot.sendMessage(chatId, t.upgrade_menu, { parse_mode: 'Markdown' });
+  await bot.sendMessage(chatId, t(lang).upgrade_menu, { parse_mode: 'Markdown' });
 
   await bot.sendInvoice(
     chatId,
-    t.upgrade_invoice_title,
-    t.upgrade_invoice_description,
+    t(lang).upgrade_invoice_title,
+    t(lang).upgrade_invoice_description,
     'premium_monthly',
     '',           // provider_token — empty string for Telegram Stars
     'XTR',        // Telegram Stars currency
@@ -197,10 +207,11 @@ bot.onText(/\/upgrade/, async (msg) => {
 
 bot.onText(/\/history/, async (msg) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const user = getUser.get(chatId);
 
   if (!user || user.plan === 'free') {
-    return bot.sendMessage(chatId, t.history_premium_only, {
+    return bot.sendMessage(chatId, t(lang).history_premium_only, {
       parse_mode: 'Markdown',
       reply_markup: { inline_keyboard: [[{ text: '⭐ Upgrade to Premium', callback_data: 'open_upgrade' }]] }
     });
@@ -208,12 +219,12 @@ bot.onText(/\/history/, async (msg) => {
 
   const week = getWeekSummary(chatId);
   if (week.length === 0) {
-    return bot.sendMessage(chatId, t.history_no_data);
+    return bot.sendMessage(chatId, t(lang).history_no_data);
   }
 
-  let text = t.history_week_header;
+  let text = t(lang).history_week_header;
   week.forEach(row => {
-    text += t.history_day(row.date, row.total_calories, row.total_protein, row.total_fat, row.total_carbs);
+    text += t(lang).history_day(row.date, row.total_calories, row.total_protein, row.total_fat, row.total_carbs);
   });
 
   const month = getMonthSummary(chatId);
@@ -223,8 +234,8 @@ bot.onText(/\/history/, async (msg) => {
       f: a.f + r.total_fat, c: a.c + r.total_carbs
     }), { cal: 0, p: 0, f: 0, c: 0 });
     const n = month.length;
-    text += t.history_month_header;
-    text += t.history_avg(avg.cal / n, avg.p / n, avg.f / n, avg.c / n);
+    text += t(lang).history_month_header;
+    text += t(lang).history_avg(avg.cal / n, avg.p / n, avg.f / n, avg.c / n);
   }
 
   await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
@@ -232,60 +243,63 @@ bot.onText(/\/history/, async (msg) => {
 
 bot.onText(/\/mealplan/, async (msg) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const user = getUser.get(chatId);
 
   if (!user || user.plan === 'free') {
-    return bot.sendMessage(chatId, t.mealplan_premium_only, {
+    return bot.sendMessage(chatId, t(lang).mealplan_premium_only, {
       parse_mode: 'Markdown',
       reply_markup: { inline_keyboard: [[{ text: '⭐ Upgrade to Premium', callback_data: 'open_upgrade' }]] }
     });
   }
   if (!user.calorie_norm) {
-    return bot.sendMessage(chatId, t.mealplan_no_profile);
+    return bot.sendMessage(chatId, t(lang).mealplan_no_profile);
   }
 
-  const waitMsg = await bot.sendMessage(chatId, t.mealplan_generating);
+  const waitMsg = await bot.sendMessage(chatId, t(lang).mealplan_generating);
   const plan = await generateMealPlan(user);
   await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
 
   if (plan) {
-    await bot.sendMessage(chatId, t.mealplan_header + plan, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, t(lang).mealplan_header + plan, { parse_mode: 'Markdown' });
   } else {
-    await bot.sendMessage(chatId, t.mealplan_error);
+    await bot.sendMessage(chatId, t(lang).mealplan_error);
   }
 });
 
 bot.onText(/\/shoplist/, async (msg) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const user = getUser.get(chatId);
 
   if (!user || user.plan !== 'pro') {
-    return bot.sendMessage(chatId, t.shoplist_pro_only, {
+    return bot.sendMessage(chatId, t(lang).shoplist_pro_only, {
       parse_mode: 'Markdown',
       reply_markup: { inline_keyboard: [[{ text: '🚀 Upgrade to Pro', callback_data: 'open_upgrade_pro' }]] }
     });
   }
   if (!user.calorie_norm) {
-    return bot.sendMessage(chatId, t.shoplist_no_profile);
+    return bot.sendMessage(chatId, t(lang).shoplist_no_profile);
   }
 
-  const waitMsg = await bot.sendMessage(chatId, t.shoplist_generating);
+  const waitMsg = await bot.sendMessage(chatId, t(lang).shoplist_generating);
   const list = await generateShoppingList(user);
   await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
 
   if (list) {
-    await bot.sendMessage(chatId, t.shoplist_header + list, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, t(lang).shoplist_header + list, { parse_mode: 'Markdown' });
   } else {
-    await bot.sendMessage(chatId, t.shoplist_error);
+    await bot.sendMessage(chatId, t(lang).shoplist_error);
   }
 });
 
 bot.onText(/\/recipe(?:\s+(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const user = getUser.get(chatId);
 
   if (!user || user.plan !== 'pro') {
-    return bot.sendMessage(chatId, t.recipe_pro_only, {
+    return bot.sendMessage(chatId, t(lang).recipe_pro_only, {
       parse_mode: 'Markdown',
       reply_markup: { inline_keyboard: [[{ text: '🚀 Upgrade to Pro', callback_data: 'open_upgrade_pro' }]] }
     });
@@ -293,17 +307,17 @@ bot.onText(/\/recipe(?:\s+(.+))?/, async (msg, match) => {
 
   const recipeName = match[1]?.trim();
   if (!recipeName) {
-    return bot.sendMessage(chatId, t.recipe_usage);
+    return bot.sendMessage(chatId, t(lang).recipe_usage);
   }
 
-  const waitMsg = await bot.sendMessage(chatId, t.recipe_generating(recipeName), { parse_mode: 'Markdown' });
+  const waitMsg = await bot.sendMessage(chatId, t(lang).recipe_generating(recipeName), { parse_mode: 'Markdown' });
   const recipe = await generateRecipe(recipeName, user);
   await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
 
   if (recipe) {
-    await bot.sendMessage(chatId, t.recipe_header(recipeName) + recipe, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, t(lang).recipe_header(recipeName) + recipe, { parse_mode: 'Markdown' });
   } else {
-    await bot.sendMessage(chatId, t.recipe_error);
+    await bot.sendMessage(chatId, t(lang).recipe_error);
   }
 });
 
@@ -353,6 +367,7 @@ bot.onText(/\/admin(@\w+)?(?:\s+(.+))?/, async (msg, match) => {
 
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
+  const lang = getLang(query.from?.language_code);
   const data = query.data;
 
   await bot.answerCallbackQuery(query.id);
@@ -361,7 +376,7 @@ bot.on('callback_query', async (query) => {
   if (data.startsWith('gender_')) {
     const gender = data === 'gender_male' ? 'male' : 'female';
     onboardingState[chatId] = { gender, step: 'age' };
-    await bot.sendMessage(chatId, t.ask_age);
+    await bot.sendMessage(chatId, t(lang).ask_age);
   }
 
   // Admin plan switch
@@ -390,13 +405,13 @@ bot.on('callback_query', async (query) => {
   if (data === 'open_upgrade') {
     const user = getUser.get(chatId);
     if (user && user.plan === 'premium') {
-      return bot.sendMessage(chatId, t.upgrade_already_premium);
+      return bot.sendMessage(chatId, t(lang).upgrade_already_premium);
     }
-    await bot.sendMessage(chatId, t.upgrade_menu, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, t(lang).upgrade_menu, { parse_mode: 'Markdown' });
     await bot.sendInvoice(
       chatId,
-      t.upgrade_invoice_title,
-      t.upgrade_invoice_description,
+      t(lang).upgrade_invoice_title,
+      t(lang).upgrade_invoice_description,
       'premium_monthly',
       '',
       'XTR',
@@ -425,13 +440,13 @@ bot.on('callback_query', async (query) => {
     if (state) {
       state.goal = goal;
       state.step = 'activity';
-      await bot.sendMessage(chatId, t.ask_activity, {
+      await bot.sendMessage(chatId, t(lang).ask_activity, {
         reply_markup: {
           inline_keyboard: [
-            [{ text: t.btn_activity_sedentary, callback_data: 'activity_sedentary' }],
-            [{ text: t.btn_activity_light,     callback_data: 'activity_light' }],
-            [{ text: t.btn_activity_moderate,  callback_data: 'activity_moderate' }],
-            [{ text: t.btn_activity_active,    callback_data: 'activity_active' }]
+            [{ text: t(lang).btn_activity_sedentary, callback_data: 'activity_sedentary' }],
+            [{ text: t(lang).btn_activity_light,     callback_data: 'activity_light' }],
+            [{ text: t(lang).btn_activity_moderate,  callback_data: 'activity_moderate' }],
+            [{ text: t(lang).btn_activity_active,    callback_data: 'activity_active' }]
           ]
         }
       });
@@ -451,10 +466,10 @@ bot.on('callback_query', async (query) => {
         chatId
       );
 
-      const goalText = { lose: t.goal_lose, gain: t.goal_gain, recomp: t.goal_recomp, maintain: t.goal_maintain }[state.goal] || t.goal_maintain;
-      const activityText = { sedentary: t.btn_activity_sedentary, light: t.btn_activity_light, moderate: t.btn_activity_moderate, active: t.btn_activity_active }[activity];
+      const goalText = { lose: t(lang).goal_lose, gain: t(lang).goal_gain, recomp: t(lang).goal_recomp, maintain: t(lang).goal_maintain }[state.goal] || t(lang).goal_maintain;
+      const activityText = { sedentary: t(lang).btn_activity_sedentary, light: t(lang).btn_activity_light, moderate: t(lang).btn_activity_moderate, active: t(lang).btn_activity_active }[activity];
 
-      await bot.sendMessage(chatId, t.profile_done(goalText, activityText, norms));
+      await bot.sendMessage(chatId, t(lang).profile_done(goalText, activityText, norms));
       delete onboardingState[chatId];
     }
   }
@@ -464,6 +479,7 @@ bot.on('callback_query', async (query) => {
 
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const state = onboardingState[chatId];
 
   if (msg.photo || msg.text?.startsWith('/')) return;
@@ -477,7 +493,7 @@ bot.on('message', async (msg) => {
 
     const chatUsage = checkChatUsage(chatId);
     if (!chatUsage.allowed) {
-      return bot.sendMessage(chatId, t.chat_limit_reached, {
+      return bot.sendMessage(chatId, t(lang).chat_limit_reached, {
         reply_markup: {
           inline_keyboard: [[{ text: '⭐ Upgrade to Premium', callback_data: 'open_upgrade' }]]
         }
@@ -499,33 +515,33 @@ bot.on('message', async (msg) => {
 
   if (state.step === 'age') {
     if (isNaN(num) || num < 10 || num > 100) {
-      return bot.sendMessage(chatId, t.err_age);
+      return bot.sendMessage(chatId, t(lang).err_age);
     }
     state.age = num;
     state.step = 'weight';
-    await bot.sendMessage(chatId, t.ask_weight);
+    await bot.sendMessage(chatId, t(lang).ask_weight);
   }
   else if (state.step === 'weight') {
     if (isNaN(num) || num < 30 || num > 300) {
-      return bot.sendMessage(chatId, t.err_weight);
+      return bot.sendMessage(chatId, t(lang).err_weight);
     }
     state.weight = num;
     state.step = 'height';
-    await bot.sendMessage(chatId, t.ask_height);
+    await bot.sendMessage(chatId, t(lang).ask_height);
   }
   else if (state.step === 'height') {
     if (isNaN(num) || num < 100 || num > 250) {
-      return bot.sendMessage(chatId, t.err_height);
+      return bot.sendMessage(chatId, t(lang).err_height);
     }
     state.height = num;
     state.step = 'goal';
-    await bot.sendMessage(chatId, t.ask_goal, {
+    await bot.sendMessage(chatId, t(lang).ask_goal, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: t.btn_goal_lose,     callback_data: 'goal_lose' }],
-          [{ text: t.btn_goal_gain,     callback_data: 'goal_gain' }],
-          [{ text: t.btn_goal_recomp,   callback_data: 'goal_recomp' }],
-          [{ text: t.btn_goal_maintain, callback_data: 'goal_maintain' }]
+          [{ text: t(lang).btn_goal_lose,     callback_data: 'goal_lose' }],
+          [{ text: t(lang).btn_goal_gain,     callback_data: 'goal_gain' }],
+          [{ text: t(lang).btn_goal_recomp,   callback_data: 'goal_recomp' }],
+          [{ text: t(lang).btn_goal_maintain, callback_data: 'goal_maintain' }]
         ]
       }
     });
@@ -536,18 +552,19 @@ bot.on('message', async (msg) => {
 
 bot.on('photo', async (msg) => {
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
 
   // Ensure user exists
-  createUser.run(chatId, msg.from.first_name || 'friend');
+  createUser.run(chatId, msg.from.first_name || 'friend', lang);
 
   // Check usage limits
   const usage = checkAndUpdateUsage(chatId);
   if (!usage.allowed) {
-    return bot.sendMessage(chatId, t.limit_reached);
+    return bot.sendMessage(chatId, t(lang).limit_reached);
   }
 
   // Send "analyzing" message
-  const waitMsg = await bot.sendMessage(chatId, t.analyzing);
+  const waitMsg = await bot.sendMessage(chatId, t(lang).analyzing);
 
   try {
     // Download photo (largest size)
@@ -560,7 +577,7 @@ bot.on('photo', async (msg) => {
 
     if (!result.success) {
       await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
-      return bot.sendMessage(chatId, t.analysis_failed);
+      return bot.sendMessage(chatId, t(lang).analysis_failed);
     }
 
     const { data } = result;
@@ -574,10 +591,10 @@ bot.on('photo', async (msg) => {
     incrementUsage(chatId);
 
     // Format response
-    let text = t.analysis_header;
+    let text = t(lang).analysis_header;
 
     data.items.forEach((item) => {
-      text += t.analysis_item(
+      text += t(lang).analysis_item(
         item.name,
         formatNumber(item.weight_g),
         formatNumber(item.calories),
@@ -588,7 +605,7 @@ bot.on('photo', async (msg) => {
     });
 
     if (data.items.length > 1) {
-      text += t.analysis_total(
+      text += t(lang).analysis_total(
         formatNumber(data.total.calories),
         formatNumber(data.total.protein),
         formatNumber(data.total.fat),
@@ -604,7 +621,7 @@ bot.on('photo', async (msg) => {
     const user = getUser.get(chatId);
     if (user && user.calorie_norm) {
       const totals = getTodayTotals.get(chatId);
-      text += t.analysis_daily(
+      text += t(lang).analysis_daily(
         formatNumber(totals.total_calories),
         formatNumber(user.calorie_norm),
         progressBar(totals.total_calories, user.calorie_norm)
@@ -613,7 +630,7 @@ bot.on('photo', async (msg) => {
 
     const remaining = usage.remaining - 1;
     if (remaining > 0 && !user?.is_premium) {
-      text += t.analyses_remaining(remaining);
+      text += t(lang).analyses_remaining(remaining);
     }
 
     await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
@@ -622,7 +639,7 @@ bot.on('photo', async (msg) => {
   } catch (error) {
     console.error('Photo analysis error:', error);
     await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
-    await bot.sendMessage(chatId, t.analysis_error);
+    await bot.sendMessage(chatId, t(lang).analysis_error);
   }
 });
 
@@ -636,6 +653,7 @@ bot.on('message', async (msg) => {
   if (!msg.successful_payment) return;
 
   const chatId = msg.chat.id;
+  const lang = userLang(msg);
   const payment = msg.successful_payment;
 
   const newPlan = payment.invoice_payload === 'pro_monthly' ? 'pro' : 'premium';
@@ -648,7 +666,7 @@ bot.on('message', async (msg) => {
     payment.invoice_payload
   );
 
-  await bot.sendMessage(chatId, t.upgrade_success, { parse_mode: 'Markdown' });
+  await bot.sendMessage(chatId, t(lang).upgrade_success, { parse_mode: 'Markdown' });
 });
 
 // ============ WEEKLY REPORT SCHEDULER ============
@@ -663,8 +681,9 @@ async function sendWeeklyReports() {
       if (thisWeek.length === 0) continue;
       const lastWeek = getLastWeekSummary(user.telegram_id);
       const report = await generateWeeklyReport(user, thisWeek, lastWeek);
+      const lang = getLang(user.language);
       if (report) {
-        await bot.sendMessage(user.telegram_id, t.weekly_report_header + report, { parse_mode: 'Markdown' });
+        await bot.sendMessage(user.telegram_id, t(lang).weekly_report_header + report, { parse_mode: 'Markdown' });
       }
     } catch (e) {
       console.error(`Weekly report failed for ${user.telegram_id}:`, e.message);

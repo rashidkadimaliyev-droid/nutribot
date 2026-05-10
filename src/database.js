@@ -113,11 +113,11 @@ const getUser = {
 };
 
 const createUser = {
-  run(telegramId, name) {
+  run(telegramId, name, language = 'en') {
     db.run(
-      `INSERT INTO users (telegram_id, name) VALUES (?, ?)
-       ON CONFLICT(telegram_id) DO UPDATE SET name = excluded.name`,
-      [telegramId, name]
+      `INSERT INTO users (telegram_id, name, language) VALUES (?, ?, ?)
+       ON CONFLICT(telegram_id) DO UPDATE SET name = excluded.name, language = excluded.language`,
+      [telegramId, name, language]
     );
     saveDB();
   }
