@@ -311,7 +311,8 @@ bot.onText(/\/recipe(?:\s+(.+))?/, async (msg, match) => {
 
 bot.onText(/\/admin(@\w+)?(?:\s+(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
-  if (msg.from.id !== ADMIN_ID) return;
+  console.log(`[admin] from.id=${msg.from.id} ADMIN_ID=${ADMIN_ID} match=${JSON.stringify(match?.slice(1))}`);
+  if (String(msg.from.id) !== String(ADMIN_ID)) return;
 
   const args   = match[2]?.trim().split(/\s+/);
   const plan   = args?.[0]; // optional: free/premium/pro
@@ -364,7 +365,7 @@ bot.on('callback_query', async (query) => {
   }
 
   // Admin plan switch
-  if (data.startsWith('admin_') && query.from.id === ADMIN_ID) {
+  if (data.startsWith('admin_') && String(query.from.id) === String(ADMIN_ID)) {
     const plan = data.replace('admin_', '');
     upgradeUser(chatId, plan);
     await bot.editMessageText(
