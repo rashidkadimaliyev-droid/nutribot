@@ -2,6 +2,13 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic();
 
+function langInstruction(lang) {
+  if (lang === 'ru') return 'Отвечай ТОЛЬКО на русском языке.';
+  if (lang === 'tr') return 'SADECE Türkçe yanıt ver.';
+  if (lang === 'az') return 'YALNIZ Azərbaycan dilində cavab ver.';
+  return 'Reply ONLY in English.';
+}
+
 const MODEL_VISION = 'claude-sonnet-4-20250514';
 const MODEL_CHAT = 'claude-haiku-4-5-20251001';
 
@@ -125,10 +132,11 @@ const SYSTEM_PROMPT = `Ты — профессиональный нутрици�
   "comment": "Краткий комментарий о блюде, его особенностях и составе (1-2 предложения)"
 }`;
 
-async function analyzeFood(imageBase64, mediaType = 'image/jpeg', caption = null) {
-  const userText = caption
+async function analyzeFood(imageBase64, mediaType = 'image/jpeg', caption = null, lang = 'en') {
+  const base = caption
     ? `Внимательно рассмотри ВСЁ фото целиком. Проверь КАЖДУЮ тарелку, миску, контейнер — даже на краях кадра. Ищи мясо, курицу, рыбу, рис, хлеб. НЕ ПРОПУСКАЙ белковые продукты.\n\nПользователь добавил подпись: "${caption}" — используй это как приоритетную информацию о блюде и весе.`
     : 'Внимательно рассмотри ВСЁ фото целиком. Проверь КАЖДУЮ тарелку, миску, контейнер — даже на краях кадра. Ищи мясо, курицу, рыбу, рис, хлеб. НЕ ПРОПУСКАЙ белковые продукты.';
+  const userText = `${base}\n${langInstruction(lang)}`;
 
   try {
     const response = await client.messages.create({
@@ -223,7 +231,7 @@ function calculateNorms(gender, age, weight, height, goal, activity = 'moderate'
   };
 }
 
-async function getDietRecommendation(userProfile, todayTotals, norms) {
+async function getDietRecommendation(userProfile, todayTotals, norms, lang = 'en') {
   const remaining = {
     calories: norms.calories - todayTotals.total_calories,
     protein: norms.protein - todayTotals.total_protein,
@@ -244,7 +252,7 @@ Eaten today: ${Math.round(todayTotals.total_calories)} kcal (P:${Math.round(toda
 Daily target: ${norms.calories} kcal (P:${norms.protein}g F:${norms.fat}g C:${norms.carbs}g)
 Remaining: ${Math.round(remaining.calories)} kcal (P:${Math.round(remaining.protein)}g F:${Math.round(remaining.fat)}g C:${Math.round(remaining.carbs)}g)
 ${userProfile.activity === 'active' || userProfile.activity === 'moderate' ? 'User is physically active — prioritise protein for recovery.' : 'User is sedentary — focus on portion control and fibre.'}
-Give a short recommendation (2-3 sentences): what to eat next, considering the balance. Be friendly. Reply in English.`
+Give a short recommendation (2-3 sentences): what to eat next, considering the balance. Be friendly. ${langInstruction(lang)}`
         }
       ]
     });
@@ -256,11 +264,11 @@ Give a short recommendation (2-3 sentences): what to eat next, considering the b
   }
 }
 
-async function generateMealPlan(userProfile) {
+async function generateMealPlan(userProfile, lang = 'en') {
   const goalMap = { lose: 'weight loss', gain: 'muscle gain', maintain: 'weight maintenance' };
   const prompt = `You are a professional nutritionist. Create a 7-day meal plan for a ${userProfile.gender === 'male' ? 'man' : 'woman'}, ${userProfile.age} years old, ${userProfile.weight}kg, ${userProfile.height}cm, goal: ${goalMap[userProfile.goal] || 'maintenance'}.
 Daily targets: ${userProfile.calorie_norm} kcal, Protein: ${userProfile.protein_norm}g, Fat: ${userProfile.fat_norm}g, Carbs: ${userProfile.carb_norm}g.
-Format: for each day list Breakfast, Lunch, Dinner, Snack with approximate calories. Keep it concise. Reply in English.`;
+Format: for each day list Breakfast, Lunch, Dinner, Snack with approximate calories. Keep it concise. ${langInstruction(lang)}`;
 
   try {
     const response = await client.messages.create({
@@ -275,11 +283,11 @@ Format: for each day list Breakfast, Lunch, Dinner, Snack with approximate calor
   }
 }
 
-async function generateShoppingList(userProfile) {
+async function generateShoppingList(userProfile, lang = 'en') {
   const goalMap = { lose: 'weight loss', gain: 'muscle gain', maintain: 'weight maintenance' };
   const prompt = `You are a professional nutritionist. Generate a weekly grocery shopping list for a ${userProfile.gender === 'male' ? 'man' : 'woman'}, goal: ${goalMap[userProfile.goal] || 'maintenance'}, ${userProfile.calorie_norm} kcal/day.
 Group items by category: Proteins, Vegetables & Fruits, Grains & Carbs, Dairy, Fats & Oils, Other.
-Include approximate quantities for one person for 7 days. Reply in English.`;
+Include approximate quantities for one person for 7 days. ${langInstruction(lang)}`;
 
   try {
     const response = await client.messages.create({
@@ -294,11 +302,11 @@ Include approximate quantities for one person for 7 days. Reply in English.`;
   }
 }
 
-async function generateRecipe(recipeName, userProfile) {
+async function generateRecipe(recipeName, userProfile, lang = 'en') {
   const prompt = `You are a professional nutritionist and chef. Provide a detailed recipe for "${recipeName}".
 Include: ingredients with exact amounts (for 1 serving), step-by-step instructions, and full nutrition info per serving (calories, protein, fat, carbs).
 ${userProfile ? `The user's daily target is ${userProfile.calorie_norm} kcal — comment if this dish fits their goal (${userProfile.goal}).` : ''}
-Reply in English.`;
+${langInstruction(lang)}`;
 
   try {
     const response = await client.messages.create({
@@ -313,7 +321,7 @@ Reply in English.`;
   }
 }
 
-async function chatWithUser(userText, userProfile, todayTotals, isPro = false) {
+async function chatWithUser(userText, userProfile, todayTotals, isPro = false, lang = 'en') {
   const goalMap = { lose: 'похудение', gain: 'набор массы', maintain: 'поддержание веса' };
   const genderMap = { male: 'мужчина', female: 'женщина' };
 
@@ -334,7 +342,7 @@ Daily target: ${userProfile.calorie_norm} kcal (P:${userProfile.protein_norm}g F
     const response = await client.messages.create({
       model: isPro ? MODEL_VISION : MODEL_CHAT,
       max_tokens: isPro ? 1000 : 600,
-      system: `You are a friendly nutritionist assistant in the NutriBot app. Never mention Claude, Anthropic, GPT or any AI company — you are NutriBot. If asked what AI you are, say you're NutriBot's smart nutrition engine. Answer concisely (2-4 sentences), in English, without markdown headers. Use the user's profile context when available. If the question is off-topic, gently steer back to food and health.`,
+      system: `You are a friendly nutritionist assistant in the NutriBot app. Never mention Claude, Anthropic, GPT or any AI company — you are NutriBot. If asked what AI you are, say you're NutriBot's smart nutrition engine. Answer concisely (2-4 sentences), without markdown headers. Use the user's profile context when available. If the question is off-topic, gently steer back to food and health. ${langInstruction(lang)}`,
       messages: [
         {
           role: 'user',

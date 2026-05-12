@@ -153,7 +153,7 @@ bot.onText(/\/tip/, async (msg) => {
 
   await bot.sendMessage(chatId, t(lang).tip_thinking);
 
-  const tip = await getDietRecommendation(user, totals, norms);
+  const tip = await getDietRecommendation(user, totals, norms, lang);
   if (tip) {
     await bot.sendMessage(chatId, t(lang).tip_result(tip), { parse_mode: 'Markdown' });
   } else {
@@ -257,7 +257,7 @@ bot.onText(/\/mealplan/, async (msg) => {
   }
 
   const waitMsg = await bot.sendMessage(chatId, t(lang).mealplan_generating);
-  const plan = await generateMealPlan(user);
+  const plan = await generateMealPlan(user, lang);
   await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
 
   if (plan) {
@@ -283,7 +283,7 @@ bot.onText(/\/shoplist/, async (msg) => {
   }
 
   const waitMsg = await bot.sendMessage(chatId, t(lang).shoplist_generating);
-  const list = await generateShoppingList(user);
+  const list = await generateShoppingList(user, lang);
   await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
 
   if (list) {
@@ -311,7 +311,7 @@ bot.onText(/\/recipe(?:\s+(.+))?/, async (msg, match) => {
   }
 
   const waitMsg = await bot.sendMessage(chatId, t(lang).recipe_generating(recipeName), { parse_mode: 'Markdown' });
-  const recipe = await generateRecipe(recipeName, user);
+  const recipe = await generateRecipe(recipeName, user, lang);
   await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
 
   if (recipe) {
@@ -502,7 +502,7 @@ bot.on('message', async (msg) => {
 
     const totals = user ? getTodayTotals.get(chatId) : null;
     const isPro = user?.plan === 'pro';
-    const reply = await chatWithUser(text, user, totals, isPro);
+    const reply = await chatWithUser(text, user, totals, isPro, lang);
     if (reply) {
       incrementChatUsage(chatId);
       await bot.sendMessage(chatId, reply);
@@ -573,7 +573,7 @@ bot.on('photo', async (msg) => {
     const imageBase64 = imageBuffer.toString('base64');
 
     // Analyze with Claude Vision (pass caption if user added one)
-    const result = await analyzeFood(imageBase64, 'image/jpeg', msg.caption || null);
+    const result = await analyzeFood(imageBase64, 'image/jpeg', msg.caption || null, lang);
 
     if (!result.success) {
       await bot.deleteMessage(chatId, waitMsg.message_id).catch(() => {});
