@@ -157,6 +157,9 @@ const langs = {
     recipe_error: `❌ Couldn't generate the recipe. Please try again.`,
 
     weekly_report_header: `📊 *Your Weekly Report*\n\n`,
+
+    lang_select: `🌐 Choose your language:`,
+    lang_changed: `✅ Language set to English!`,
   },
 
   ru: {
@@ -317,6 +320,9 @@ const langs = {
     recipe_error: `❌ Не удалось найти рецепт. Попробуй позже.`,
 
     weekly_report_header: `📊 *Твой еженедельный отчёт*\n\n`,
+
+    lang_select: `🌐 Выберите язык:`,
+    lang_changed: `✅ Язык изменён на русский!`,
   },
 
   tr: {
@@ -477,6 +483,9 @@ const langs = {
     recipe_error: `❌ Tarif bulunamadı. Tekrar dene.`,
 
     weekly_report_header: `📊 *Haftalık Raporun*\n\n`,
+
+    lang_select: `🌐 Dil seçin:`,
+    lang_changed: `✅ Dil Türkçe olarak ayarlandı!`,
   },
 
   az: {
@@ -637,6 +646,9 @@ const langs = {
     recipe_error: `❌ Resept tapılmadı. Yenidən cəhd et.`,
 
     weekly_report_header: `📊 *Həftəlik Hesabatın*\n\n`,
+
+    lang_select: `🌐 Dil seçin:`,
+    lang_changed: `✅ Dil Azərbaycan dilinə dəyişdirildi!`,
   },
 };
 

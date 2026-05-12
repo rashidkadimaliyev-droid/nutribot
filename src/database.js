@@ -116,12 +116,17 @@ const createUser = {
   run(telegramId, name, language = 'en') {
     db.run(
       `INSERT INTO users (telegram_id, name, language) VALUES (?, ?, ?)
-       ON CONFLICT(telegram_id) DO UPDATE SET name = excluded.name, language = excluded.language`,
+       ON CONFLICT(telegram_id) DO UPDATE SET name = excluded.name`,
       [telegramId, name, language]
     );
     saveDB();
   }
 };
+
+function updateUserLanguage(telegramId, language) {
+  db.run(`UPDATE users SET language = ? WHERE telegram_id = ?`, [language, telegramId]);
+  saveDB();
+}
 
 // index.js calls: updateUserProfile.run(gender, age, weight, height, goal, activity, calories, protein, fat, carbs, chatId)
 const updateUserProfile = {
@@ -328,6 +333,7 @@ module.exports = {
   getUser,
   createUser,
   updateUserProfile,
+  updateUserLanguage,
   addFoodLog,
   getTodayLog,
   getTodayTotals,

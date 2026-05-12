@@ -7,7 +7,7 @@ const {
   addFoodLog, getTodayLog, getTodayTotals,
   getWeekSummary, getLastWeekSummary, getMonthSummary, getPlanUsers,
   checkAndUpdateUsage, incrementUsage, upgradeUser, savePayment,
-  checkChatUsage, incrementChatUsage
+  checkChatUsage, incrementChatUsage, updateUserLanguage
 } = require('./database');
 const { t, getLang } = require('./translations');
 
@@ -28,6 +28,8 @@ const onboardingState = {};
 // ============ HELPERS ============
 
 function userLang(msg) {
+  const user = getUser.get(msg.chat?.id);
+  if (user?.language) return getLang(user.language);
   return getLang(msg.from?.language_code);
 }
 
@@ -181,6 +183,24 @@ bot.onText(/\/profile/, async (msg) => {
 bot.onText(/\/help/, async (msg) => {
   const lang = userLang(msg);
   await bot.sendMessage(msg.chat.id, t(lang).help, { parse_mode: 'Markdown' });
+});
+
+bot.onText(/\/lang/, async (msg) => {
+  const lang = userLang(msg);
+  await bot.sendMessage(msg.chat.id, t(lang).lang_select, {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '🇬🇧 English',    callback_data: 'lang_en' },
+          { text: '🇷🇺 Русский',    callback_data: 'lang_ru' },
+        ],
+        [
+          { text: '🇹🇷 Türkçe',     callback_data: 'lang_tr' },
+          { text: '🇦🇿 Azərbaycan', callback_data: 'lang_az' },
+        ]
+      ]
+    }
+  });
 });
 
 bot.onText(/\/upgrade/, async (msg) => {
@@ -430,6 +450,17 @@ bot.on('callback_query', async (query) => {
       'XTR',
       [{ label: 'Pro — 1 month', amount: 200 }]
     );
+    return;
+  }
+
+  // Language selection
+  if (data.startsWith('lang_')) {
+    const newLang = data.replace('lang_', '');
+    updateUserLanguage(chatId, newLang);
+    await bot.editMessageText(t(newLang).lang_changed, {
+      chat_id: chatId,
+      message_id: query.message.message_id
+    });
     return;
   }
 
