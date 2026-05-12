@@ -72,16 +72,25 @@ bot.onText(/\/start/, async (msg) => {
   if (user && user.calorie_norm) {
     await bot.sendMessage(chatId, t(lang).welcome_back(name));
   } else {
-    await bot.sendMessage(chatId, t(lang).welcome_new(name), {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: t(lang).btn_male, callback_data: 'gender_male' },
-            { text: t(lang).btn_female, callback_data: 'gender_female' }
+    // New user — first pick language
+    await bot.sendMessage(
+      chatId,
+      '🌐 Choose your language / Выберите язык / Dilinizi seçin / Dil seçin',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🇬🇧 English',    callback_data: 'lang_en' },
+              { text: '🇷🇺 Русский',    callback_data: 'lang_ru' },
+            ],
+            [
+              { text: '🇹🇷 Türkçe',     callback_data: 'lang_tr' },
+              { text: '🇦🇿 Azərbaycan', callback_data: 'lang_az' },
+            ]
           ]
-        ]
+        }
       }
-    });
+    );
   }
 });
 
@@ -463,10 +472,27 @@ bot.on('callback_query', async (query) => {
   if (data.startsWith('lang_')) {
     const newLang = data.replace('lang_', '');
     updateUserLanguage(chatId, newLang);
-    await bot.editMessageText(t(newLang).lang_changed, {
-      chat_id: chatId,
-      message_id: query.message.message_id
-    });
+
+    const userAfterLang = getUser.get(chatId);
+    if (!userAfterLang?.calorie_norm) {
+      // New user — start onboarding in chosen language
+      const name = query.from.first_name || 'friend';
+      await bot.editMessageText(t(newLang).welcome_new(name), {
+        chat_id: chatId,
+        message_id: query.message.message_id,
+        reply_markup: {
+          inline_keyboard: [[
+            { text: t(newLang).btn_male,   callback_data: 'gender_male' },
+            { text: t(newLang).btn_female, callback_data: 'gender_female' }
+          ]]
+        }
+      });
+    } else {
+      await bot.editMessageText(t(newLang).lang_changed, {
+        chat_id: chatId,
+        message_id: query.message.message_id
+      });
+    }
     return;
   }
 
