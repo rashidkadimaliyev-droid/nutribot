@@ -357,7 +357,7 @@ Daily target: ${userProfile.calorie_norm} kcal (P:${userProfile.protein_norm}g F
   }
 }
 
-async function generateWeeklyReport(user, thisWeek, lastWeek) {
+async function generateWeeklyReport(user, thisWeek, lastWeek, lang = 'en') {
   const avg = (rows, field) => rows.length ? rows.reduce((s, r) => s + r[field], 0) / rows.length : 0;
 
   const thisCalAvg = avg(thisWeek, 'total_calories');
@@ -382,7 +382,7 @@ Last week (${lastWeek.length} days logged):
 - Avg calories/day: ${Math.round(lastCalAvg)} kcal
 - Avg protein/day: ${Math.round(lastPAvg)}g
 
-Write a 3-4 sentence report with: trend assessment (better/worse/same), what's going well, one specific improvement tip tailored to their goal and activity level. Reply in English.`;
+Write a 3-4 sentence report with: trend assessment (better/worse/same), what's going well, one specific improvement tip tailored to their goal and activity level. ${langInstruction(lang)}`;
 
   try {
     const response = await client.messages.create({

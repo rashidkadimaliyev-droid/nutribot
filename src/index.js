@@ -680,8 +680,8 @@ async function sendWeeklyReports() {
       const thisWeek = getWeekSummary(user.telegram_id);
       if (thisWeek.length === 0) continue;
       const lastWeek = getLastWeekSummary(user.telegram_id);
-      const report = await generateWeeklyReport(user, thisWeek, lastWeek);
       const lang = getLang(user.language);
+      const report = await generateWeeklyReport(user, thisWeek, lastWeek, lang);
       if (report) {
         await bot.sendMessage(user.telegram_id, t(lang).weekly_report_header + report, { parse_mode: 'Markdown' });
       }
