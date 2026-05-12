@@ -321,6 +321,36 @@ ${langInstruction(lang)}`;
   }
 }
 
+async function analyzeFoodText(userText, lang = 'en') {
+  const prompt = `You are a nutrition assistant. Determine if the user's message is a food/meal log entry or a question/conversation.
+
+If it describes food, a meal, or something consumed (with or without exact quantities) — return:
+{"type":"food_log","items":[{"name":"...","weight_g":0,"calories":0,"protein":0,"fat":0,"carbs":0}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"comment":"..."}
+
+If it is a question, greeting, or anything unrelated to logging food — return:
+{"type":"question"}
+
+User message: "${userText.replace(/"/g, '\\"')}"
+
+Rules:
+- Reply ONLY with raw JSON, no markdown, no backticks
+- For unknown weights, estimate a standard portion
+- Names of dishes in the comment should follow this rule: ${langInstruction(lang)}`;
+
+  try {
+    const response = await client.messages.create({
+      model: MODEL_CHAT,
+      max_tokens: 512,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const cleaned = response.content[0].text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.error('analyzeFoodText error:', error.message);
+    return { type: 'question' };
+  }
+}
+
 async function chatWithUser(userText, userProfile, todayTotals, isPro = false, lang = 'en') {
   const goalMap = { lose: 'похудение', gain: 'набор массы', maintain: 'поддержание веса' };
   const genderMap = { male: 'мужчина', female: 'женщина' };
@@ -397,4 +427,4 @@ Write a 3-4 sentence report with: trend assessment (better/worse/same), what's g
   }
 }
 
-module.exports = { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe, generateWeeklyReport };
+module.exports = { analyzeFood, analyzeFoodText, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe, generateWeeklyReport };

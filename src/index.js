@@ -1,7 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const https = require('https');
 const http = require('http');
-const { analyzeFood, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe, generateWeeklyReport } = require('./claude');
+const { analyzeFood, analyzeFoodText, calculateNorms, getDietRecommendation, chatWithUser, generateMealPlan, generateShoppingList, generateRecipe, generateWeeklyReport } = require('./claude');
 const {
   initDB, getUser, createUser, updateUserProfile,
   addFoodLog, getTodayLog, getTodayTotals,
@@ -136,7 +136,7 @@ bot.onText(/\/tip/, async (msg) => {
     return bot.sendMessage(chatId, t(lang).tip_no_profile);
   }
 
-  if (user.plan !== 'premium') {
+  if (user.plan === 'free') {
     return bot.sendMessage(chatId, t(lang).tip_premium_only, {
       parse_mode: 'Markdown',
       reply_markup: {
@@ -212,17 +212,15 @@ bot.onText(/\/upgrade/, async (msg) => {
     return bot.sendMessage(chatId, t(lang).upgrade_already_premium);
   }
 
-  await bot.sendMessage(chatId, t(lang).upgrade_menu, { parse_mode: 'Markdown' });
-
-  await bot.sendInvoice(
-    chatId,
-    t(lang).upgrade_invoice_title,
-    t(lang).upgrade_invoice_description,
-    'premium_monthly',
-    '',           // provider_token — empty string for Telegram Stars
-    'XTR',        // Telegram Stars currency
-    [{ label: 'Premium — 1 month', amount: 100 }]
-  );
+  await bot.sendMessage(chatId, t(lang).upgrade_menu, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '👑 Premium — 250 ⭐', callback_data: 'buy_premium' }],
+        [{ text: '🚀 Pro — 500 ⭐',     callback_data: 'buy_pro' }]
+      ]
+    }
+  });
 });
 
 bot.onText(/\/history/, async (msg) => {
@@ -295,7 +293,7 @@ bot.onText(/\/shoplist/, async (msg) => {
   if (!user || user.plan !== 'pro') {
     return bot.sendMessage(chatId, t(lang).shoplist_pro_only, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [[{ text: '🚀 Upgrade to Pro', callback_data: 'open_upgrade_pro' }]] }
+      reply_markup: { inline_keyboard: [[{ text: '🚀 Upgrade to Pro', callback_data: 'buy_pro' }]] }
     });
   }
   if (!user.calorie_norm) {
@@ -321,7 +319,7 @@ bot.onText(/\/recipe(?:\s+(.+))?/, async (msg, match) => {
   if (!user || user.plan !== 'pro') {
     return bot.sendMessage(chatId, t(lang).recipe_pro_only, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [[{ text: '🚀 Upgrade to Pro', callback_data: 'open_upgrade_pro' }]] }
+      reply_markup: { inline_keyboard: [[{ text: '🚀 Upgrade to Pro', callback_data: 'buy_pro' }]] }
     });
   }
 
@@ -427,28 +425,36 @@ bot.on('callback_query', async (query) => {
     if (user && user.plan === 'premium') {
       return bot.sendMessage(chatId, t(lang).upgrade_already_premium);
     }
-    await bot.sendMessage(chatId, t(lang).upgrade_menu, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, t(lang).upgrade_menu, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '👑 Premium — 250 ⭐', callback_data: 'buy_premium' }],
+          [{ text: '🚀 Pro — 500 ⭐',     callback_data: 'buy_pro' }]
+        ]
+      }
+    });
+    return;
+  }
+
+  if (data === 'buy_premium') {
     await bot.sendInvoice(
       chatId,
       t(lang).upgrade_invoice_title,
       t(lang).upgrade_invoice_description,
-      'premium_monthly',
-      '',
-      'XTR',
-      [{ label: 'Premium — 1 month', amount: 100 }]
+      'premium_monthly', '', 'XTR',
+      [{ label: 'Premium — 1 month', amount: 250 }]
     );
     return;
   }
 
-  if (data === 'open_upgrade_pro') {
+  if (data === 'buy_pro') {
     await bot.sendInvoice(
       chatId,
       'NutriBot Pro',
       'Shopping lists, full recipes with macros, Claude Sonnet AI chat.',
-      'pro_monthly',
-      '',
-      'XTR',
-      [{ label: 'Pro — 1 month', amount: 200 }]
+      'pro_monthly', '', 'XTR',
+      [{ label: 'Pro — 1 month', amount: 500 }]
     );
     return;
   }
@@ -522,6 +528,57 @@ bot.on('message', async (msg) => {
 
     const user = getUser.get(chatId);
 
+    // First determine if user is logging food or asking a question
+    const parsed = await analyzeFoodText(text, lang);
+
+    if (parsed.type === 'food_log' && parsed.items?.length) {
+      // Check photo usage limit
+      const usage = checkAndUpdateUsage(chatId);
+      if (!usage.allowed) {
+        return bot.sendMessage(chatId, t(lang).limit_reached);
+      }
+
+      // Save items to food log
+      for (const item of parsed.items) {
+        addFoodLog.run(chatId, item.name, item.weight_g, item.calories, item.protein, item.fat, item.carbs);
+      }
+      incrementUsage(chatId);
+
+      // Format response (same style as photo analysis)
+      let reply = t(lang).analysis_header;
+      parsed.items.forEach((item) => {
+        reply += t(lang).analysis_item(
+          item.name,
+          formatNumber(item.weight_g),
+          formatNumber(item.calories),
+          formatNumber(item.protein),
+          formatNumber(item.fat),
+          formatNumber(item.carbs)
+        );
+      });
+      if (parsed.items.length > 1) {
+        reply += t(lang).analysis_total(
+          formatNumber(parsed.total.calories),
+          formatNumber(parsed.total.protein),
+          formatNumber(parsed.total.fat),
+          formatNumber(parsed.total.carbs)
+        );
+      }
+      if (parsed.comment) reply += `💬 ${parsed.comment}\n\n`;
+
+      if (user?.calorie_norm) {
+        const totals = getTodayTotals.get(chatId);
+        reply += t(lang).analysis_daily(
+          formatNumber(totals.total_calories),
+          formatNumber(user.calorie_norm),
+          progressBar(totals.total_calories, user.calorie_norm)
+        );
+      }
+
+      return bot.sendMessage(chatId, reply, { parse_mode: 'Markdown' });
+    }
+
+    // Question / conversation flow
     const chatUsage = checkChatUsage(chatId);
     if (!chatUsage.allowed) {
       return bot.sendMessage(chatId, t(lang).chat_limit_reached, {
