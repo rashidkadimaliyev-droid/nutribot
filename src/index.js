@@ -402,8 +402,9 @@ bot.on('callback_query', async (query) => {
   // Gender selection
   if (data.startsWith('gender_')) {
     const gender = data === 'gender_male' ? 'male' : 'female';
-    onboardingState[chatId] = { gender, step: 'age' };
-    await bot.sendMessage(chatId, t(lang).ask_age);
+    const stateLang = onboardingState[chatId]?.lang || lang;
+    onboardingState[chatId] = { gender, step: 'age', lang: stateLang };
+    await bot.sendMessage(chatId, t(stateLang).ask_age);
   }
 
   // Admin plan switch
@@ -476,6 +477,7 @@ bot.on('callback_query', async (query) => {
     const userAfterLang = getUser.get(chatId);
     if (!userAfterLang?.calorie_norm) {
       // New user — start onboarding in chosen language
+      onboardingState[chatId] = { ...(onboardingState[chatId] || {}), lang: newLang };
       const name = query.from.first_name || 'friend';
       await bot.editMessageText(t(newLang).welcome_new(name), {
         chat_id: chatId,
@@ -503,13 +505,14 @@ bot.on('callback_query', async (query) => {
     if (state) {
       state.goal = goal;
       state.step = 'activity';
-      await bot.sendMessage(chatId, t(lang).ask_activity, {
+      const sl = state.lang || lang;
+      await bot.sendMessage(chatId, t(sl).ask_activity, {
         reply_markup: {
           inline_keyboard: [
-            [{ text: t(lang).btn_activity_sedentary, callback_data: 'activity_sedentary' }],
-            [{ text: t(lang).btn_activity_light,     callback_data: 'activity_light' }],
-            [{ text: t(lang).btn_activity_moderate,  callback_data: 'activity_moderate' }],
-            [{ text: t(lang).btn_activity_active,    callback_data: 'activity_active' }]
+            [{ text: t(sl).btn_activity_sedentary, callback_data: 'activity_sedentary' }],
+            [{ text: t(sl).btn_activity_light,     callback_data: 'activity_light' }],
+            [{ text: t(sl).btn_activity_moderate,  callback_data: 'activity_moderate' }],
+            [{ text: t(sl).btn_activity_active,    callback_data: 'activity_active' }]
           ]
         }
       });
@@ -521,6 +524,7 @@ bot.on('callback_query', async (query) => {
     const activity = data.replace('activity_', '');
     const state = onboardingState[chatId];
     if (state) {
+      const sl = state.lang || lang;
       const norms = calculateNorms(state.gender, state.age, state.weight, state.height, state.goal, activity);
 
       updateUserProfile.run(
@@ -529,10 +533,10 @@ bot.on('callback_query', async (query) => {
         chatId
       );
 
-      const goalText = { lose: t(lang).goal_lose, gain: t(lang).goal_gain, recomp: t(lang).goal_recomp, maintain: t(lang).goal_maintain }[state.goal] || t(lang).goal_maintain;
-      const activityText = { sedentary: t(lang).btn_activity_sedentary, light: t(lang).btn_activity_light, moderate: t(lang).btn_activity_moderate, active: t(lang).btn_activity_active }[activity];
+      const goalText = { lose: t(sl).goal_lose, gain: t(sl).goal_gain, recomp: t(sl).goal_recomp, maintain: t(sl).goal_maintain }[state.goal] || t(sl).goal_maintain;
+      const activityText = { sedentary: t(sl).btn_activity_sedentary, light: t(sl).btn_activity_light, moderate: t(sl).btn_activity_moderate, active: t(sl).btn_activity_active }[activity];
 
-      await bot.sendMessage(chatId, t(lang).profile_done(goalText, activityText, norms));
+      await bot.sendMessage(chatId, t(sl).profile_done(goalText, activityText, norms));
       delete onboardingState[chatId];
     }
   }
@@ -626,36 +630,37 @@ bot.on('message', async (msg) => {
 
   const text = msg.text?.trim();
   const num = parseFloat(text);
+  const sl = state.lang || lang;
 
   if (state.step === 'age') {
     if (isNaN(num) || num < 10 || num > 100) {
-      return bot.sendMessage(chatId, t(lang).err_age);
+      return bot.sendMessage(chatId, t(sl).err_age);
     }
     state.age = num;
     state.step = 'weight';
-    await bot.sendMessage(chatId, t(lang).ask_weight);
+    await bot.sendMessage(chatId, t(sl).ask_weight);
   }
   else if (state.step === 'weight') {
     if (isNaN(num) || num < 30 || num > 300) {
-      return bot.sendMessage(chatId, t(lang).err_weight);
+      return bot.sendMessage(chatId, t(sl).err_weight);
     }
     state.weight = num;
     state.step = 'height';
-    await bot.sendMessage(chatId, t(lang).ask_height);
+    await bot.sendMessage(chatId, t(sl).ask_height);
   }
   else if (state.step === 'height') {
     if (isNaN(num) || num < 100 || num > 250) {
-      return bot.sendMessage(chatId, t(lang).err_height);
+      return bot.sendMessage(chatId, t(sl).err_height);
     }
     state.height = num;
     state.step = 'goal';
-    await bot.sendMessage(chatId, t(lang).ask_goal, {
+    await bot.sendMessage(chatId, t(sl).ask_goal, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: t(lang).btn_goal_lose,     callback_data: 'goal_lose' }],
-          [{ text: t(lang).btn_goal_gain,     callback_data: 'goal_gain' }],
-          [{ text: t(lang).btn_goal_recomp,   callback_data: 'goal_recomp' }],
-          [{ text: t(lang).btn_goal_maintain, callback_data: 'goal_maintain' }]
+          [{ text: t(sl).btn_goal_lose,     callback_data: 'goal_lose' }],
+          [{ text: t(sl).btn_goal_gain,     callback_data: 'goal_gain' }],
+          [{ text: t(sl).btn_goal_recomp,   callback_data: 'goal_recomp' }],
+          [{ text: t(sl).btn_goal_maintain, callback_data: 'goal_maintain' }]
         ]
       }
     });
